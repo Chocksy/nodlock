@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smart BROWSER shim. ALWAYS opens the URL in your real default browser, and
-# ADDITIONALLY sends a "Login needed" push to your phone (via the native Sentinel
+# ADDITIONALLY sends a "Login needed" push to your phone (via the native Nodlock
 # app's APNs) ONLY when the URL looks like an auth/login/device-authorization
 # flow. Safe as a global $BROWSER: it augments, never hijacks.
 #   export BROWSER="$HOME/.local/bin/push-url"
@@ -39,7 +39,7 @@ if is_auth "$url" && [ -r "$TOKEN_FILE" ]; then
        "http://127.0.0.1:${PORT}/notify?k=${tok}" >/dev/null 2>&1; then
     echo "push-url: auth URL → opened locally + APNs push to phone" >&2
   else
-    echo "push-url: opened locally (phone push failed — is Sentinel running?)" >&2
+    echo "push-url: opened locally (phone push failed — is Nodlock running?)" >&2
   fi
 else
   echo "push-url: opened locally (not an auth URL)" >&2

@@ -4,10 +4,10 @@ Work top to bottom. Each item is a gate; do not skip ahead. Paths are relative t
 
 ## 0. Before you touch App Store Connect
 
-- [ ] Rename is complete in the build: `CFBundleDisplayName` in `SentineliOS/Sentinel/Info.plist` reads `Nodlock`. Usage strings (`NSFaceIDUsageDescription`, `NSCameraUsageDescription`) say "Nodlock", not the old name. The App Store shows these strings in the permission dialogs; reviewers notice mismatches.
+- [ ] Rename is complete in the build: `CFBundleDisplayName` in `NodlockiOS/Nodlock/Info.plist` reads `Nodlock`. Usage strings (`NSFaceIDUsageDescription`, `NSCameraUsageDescription`) say "Nodlock", not the old name. The App Store shows these strings in the permission dialogs; reviewers notice mismatches.
 - [ ] Demo mode ("Try a demo" on the pairing screen) works on a clean install on a physical iPhone with no companion reachable. Walk the steps in `REVIEW_NOTES.md` end to end.
-- [ ] Bundle ID decided. The repo uses `com.example.sentinel.ios` (yours goes in `SentineliOS/.env`) (set in `SentineliOS/project.yml` via `.env` + `./gen.sh`). You keep your own bundle ID; changing it later means a new App Store record, so settle it now. Anyone cloning the repo uses their own reverse-DNS ID.
-- [ ] `DEVELOPMENT_TEAM` set to your team (your Team ID, in `SentineliOS/.env`) in `SentineliOS/.env`, regenerated with `./gen.sh` (or `xcodegen generate`).
+- [ ] Bundle ID decided. The repo uses `com.example.sentinel.ios` (yours goes in `NodlockiOS/.env`) (set in `NodlockiOS/project.yml` via `.env` + `./gen.sh`). You keep your own bundle ID; changing it later means a new App Store record, so settle it now. Anyone cloning the repo uses their own reverse-DNS ID.
+- [ ] `DEVELOPMENT_TEAM` set to your team (your Team ID, in `NodlockiOS/.env`) in `NodlockiOS/.env`, regenerated with `./gen.sh` (or `xcodegen generate`).
 - [ ] Privacy policy hosted at a public URL. Source: `appstore/PRIVACY_POLICY.md`. Replace the placeholder email first. Confirm the URL returns 200 from a phone on cellular.
 - [ ] Support URL live, with a contact method and a link to the Mac companion download.
 
@@ -26,21 +26,21 @@ Work top to bottom. Each item is a gate; do not skip ahead. Paths are relative t
 
 Development push tokens are rejected by the production APNs gateway. TestFlight and App Store builds are production.
 
-- [ ] `SentineliOS/Sentinel/Sentinel.entitlements`: change `aps-environment` from `development` to `production`.
+- [ ] `NodlockiOS/Nodlock/Nodlock.entitlements`: change `aps-environment` from `development` to `production`.
 - [ ] On the Mac companion: set `OPG_APNS_ENV=production` in `~/.config/op-guard/env`, then restart the agent (`launchctl kickstart -k gui/$UID/<your label>`).
 - [ ] Re-pair the phone after installing the TestFlight build. The device token changes when the APNs environment changes. Confirm a real push arrives before you submit.
 - [ ] Keep a note to flip both back to `development` / `sandbox` for local debug builds, or you will chase a silent "no push" bug later.
 
 ## 4. Version and build numbers
 
-- [ ] `MARKETING_VERSION` in `SentineliOS/project.yml` is `1.0` (ships as `CFBundleShortVersionString`). Fine for first release.
+- [ ] `MARKETING_VERSION` in `NodlockiOS/project.yml` is `1.0` (ships as `CFBundleShortVersionString`). Fine for first release.
 - [ ] `CURRENT_PROJECT_VERSION` is `1` (ships as `CFBundleVersion`). Every upload to App Store Connect needs a build number higher than any previous upload for the same version. Bump it before each archive, then `./gen.sh`.
 - [ ] Version string in App Store Connect matches `CFBundleShortVersionString` exactly.
 
 ## 5. Export compliance
 
 - [ ] Nodlock uses only HTTPS (URLSession to the Mac over the tunnel, and APNs is Apple's). Standard encryption from the OS is exempt under the App Store's export rules.
-- [ ] Add to `SentineliOS/Sentinel/Info.plist`:
+- [ ] Add to `NodlockiOS/Nodlock/Info.plist`:
 
   ```xml
   <key>ITSAppUsesNonExemptEncryption</key>
@@ -53,7 +53,7 @@ Development push tokens are rejected by the production APNs gateway. TestFlight 
 
 ## 6. App icon
 
-- [ ] `SentineliOS/Sentinel/Assets.xcassets/AppIcon.appiconset/AppIcon.png` is 1024x1024, no alpha channel. Verified with `sips -g hasAlpha -g pixelWidth` (hasAlpha: no, pixelWidth: 1024). Nothing to do unless you redesign it for the new name.
+- [ ] `NodlockiOS/Nodlock/Assets.xcassets/AppIcon.appiconset/AppIcon.png` is 1024x1024, no alpha channel. Verified with `sips -g hasAlpha -g pixelWidth` (hasAlpha: no, pixelWidth: 1024). Nothing to do unless you redesign it for the new name.
 - [ ] Icon does not contain the old project name or wordmark.
 
 ## 7. App Store Connect record

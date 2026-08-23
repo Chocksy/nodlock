@@ -1,7 +1,7 @@
-# Sentinel
+# Nodlock
 
 Approve macOS security prompts from your phone. When your Mac throws up a
-1Password unlock, a SecurityAgent password box, or a keychain prompt, Sentinel
+1Password unlock, a SecurityAgent password box, or a keychain prompt, Nodlock
 screenshots it, pushes you a notification, and gives you a panel where you tap
 the dialog and type the password with Face ID plus 1Password autofill. Works
 when you are across the room and when you are across an ocean.
@@ -15,7 +15,7 @@ link, instead of a browser window you are not sitting in front of.
 ```
    ┌──────────────────── your Mac ────────────────────┐
    │                                                  │
-   │   Sentinel.app (menu bar, LSUIElement)           │
+   │   Nodlock.app (menu bar, LSUIElement)            │
    │     ├─ Watcher      spots the security dialog    │
    │     ├─ Capture      ScreenCaptureKit screenshot  │
    │     ├─ Input        CGEvent click / keystrokes   │
@@ -34,7 +34,7 @@ link, instead of a browser window you are not sitting in front of.
                  └────────┬────────────┘
                           ▼
                  ┌──────────────────┐
-                 │  Sentinel (iOS)  │
+                 │  Nodlock (iOS)   │
                  │  Face ID · QR    │
                  └──────────────────┘
 ```
@@ -62,9 +62,9 @@ already reach (LAN IP, a VPN address) works as `SENTINEL_URL`.
 The repo ships with placeholder identifiers. Change them, or code signing will
 fight you:
 
-- `SentinelApp/build-app.sh` sets `BUNDLE_ID`. Make it yours, e.g.
+- `NodlockMac/build-app.sh` sets `BUNDLE_ID`. Make it yours, e.g.
   `com.example.sentinel`.
-- `SentineliOS/project.yml` sets the iOS bundle id, e.g.
+- `NodlockiOS/project.yml` sets the iOS bundle id, e.g.
   `com.example.sentinel.ios`. Re-run `xcodegen generate` after editing.
 - The Mac app ad-hoc signs by default. For a real identity:
   `SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./install.sh`.
@@ -79,19 +79,19 @@ git clone <this repo> && cd op-guard
 ```
 
 `install.sh` checks prerequisites, creates `~/.config/op-guard/`, writes the env
-file, builds `Sentinel.app`, installs it to `~/Applications`, loads the
+file, builds `Nodlock.app`, installs it to `~/Applications`, loads the
 LaunchAgent, and opens the two Privacy panes. Re-running it is safe: it never
 overwrites a value you already set.
 
 Then:
 
 1. **Grant two permissions.** System Settings > Privacy & Security. Enable
-   Sentinel under **Screen Recording** and **Accessibility**. Screen Recording
+   Nodlock under **Screen Recording** and **Accessibility**. Screen Recording
    only takes effect after a relaunch:
    `launchctl kickstart -k gui/$UID/com.example.sentinel`.
-2. **Build the iOS app.** Open `SentineliOS/` in Xcode, pick your team, add the
+2. **Build the iOS app.** Open `NodlockiOS/` in Xcode, pick your team, add the
    *Push Notifications* and *Background Modes > Remote notifications*
-   capabilities, run it on your phone. See `SentineliOS/README.md`.
+   capabilities, run it on your phone. See `NodlockiOS/README.md`.
 3. **Wire up APNs.** Create a key at developer.apple.com > Keys with the APNs
    service enabled. Save the download as
    `~/.config/op-guard/apns/AuthKey_<KEY_ID>.p8`, then uncomment and fill the
@@ -159,33 +159,33 @@ Add your own patterns, one extended regex per line, in
 - **Face ID on the phone.** The unlock screen sits behind LocalAuthentication
   and re-locks when the app backgrounds. Pairing lives in the iOS Keychain.
 - **TCC identity is the app's.** Screen Recording and Accessibility are granted
-  to `Sentinel.app` once. They stick across restarts because the bundle, not a
+  to `Nodlock.app` once. They stick across restarts because the bundle, not a
   Python interpreter, holds them.
 
 Run one watcher at a time. Anything else already on `127.0.0.1:8377` will make
-Sentinel fail to bind.
+Nodlock fail to bind.
 
 ## Repo layout
 
 ```
 install.sh          one-command installer (idempotent)
 push-url            $BROWSER shim: auth URLs to your phone
-SentinelApp/        the Mac menu-bar app (Swift 6, SwiftPM)
+NodlockMac/         the Mac menu-bar app (Swift 6, SwiftPM)
   build-app.sh      swift build + bundle assembly + codesign
-  Sources/Sentinel/ Watcher, Capture, Input, HTTPServer, Panel, APNs, Onboarding
-SentineliOS/        the native iOS client (SwiftUI, XcodeGen)
+  Sources/Nodlock/  Watcher, Capture, Input, HTTPServer, Panel, APNs, Onboarding
+NodlockiOS/         the native iOS client (SwiftUI, XcodeGen)
 ```
 
 ## Troubleshooting
 
 - **No push on the phone.** Check `OPG_APNS_ENV`. A debug build from Xcode is
   `sandbox`; TestFlight and the App Store are `production`. Wrong value fails
-  silently. Then check `/tmp/sentinel.out`.
+  silently. Then check `/tmp/nodlock.out`.
 - **Panel loads but the screenshot is blank.** Screen Recording was granted
   after launch. Relaunch:
   `launchctl kickstart -k gui/$UID/com.example.sentinel`.
 - **Clicks and typing do nothing.** Accessibility is not granted, or it is
-  granted to an old copy of the bundle. Remove Sentinel from the list, re-add
+  granted to an old copy of the bundle. Remove Nodlock from the list, re-add
   the one in `~/Applications`.
 - **Phone cannot reach the panel.** `SENTINEL_URL` is probably still
   `http://127.0.0.1:8377`. Set it to the tunnel hostname and re-pair, since the

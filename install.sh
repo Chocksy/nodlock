@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# install.sh - one-command Sentinel installer for a fresh Mac.
+# install.sh - one-command Nodlock installer for a fresh Mac.
 #
-# What you get: the Sentinel menu-bar app built from source, installed in
+# What you get: the Nodlock menu-bar app built from source, installed in
 # ~/Applications, running at login, with ~/.config/op-guard/ set up. Pushes go
 # to the native iOS app through APNs. The panel binds 127.0.0.1 and you reach it
 # from the phone over your own Cloudflare Tunnel (or any URL you already control).
@@ -17,8 +17,8 @@ CFG_DIR="$HOME/.config/op-guard"
 ENV_FILE="$CFG_DIR/env"
 TOKEN_FILE="$CFG_DIR/panel-token"
 APNS_DIR="$CFG_DIR/apns"
-APP_SRC="$HERE/SentinelApp/Sentinel.app"
-APP_DST="$HOME/Applications/Sentinel.app"
+APP_SRC="$HERE/NodlockMac/Nodlock.app"
+APP_DST="$HOME/Applications/Nodlock.app"
 
 # LaunchAgent label. Use your own reverse-DNS prefix:
 #   SENTINEL_LABEL=com.yourname.sentinel ./install.sh
@@ -40,7 +40,7 @@ die()  { printf '\033[1;31mxx \033[0m %s\n' "$*" >&2; exit 1; }
 # ---------------------------------------------------------------------------
 say "Checking prerequisites"
 
-[[ "$(uname -s)" == "Darwin" ]] || die "Sentinel is macOS only (this is $(uname -s))."
+[[ "$(uname -s)" == "Darwin" ]] || die "Nodlock is macOS only (this is $(uname -s))."
 
 # swift ships with the Xcode command line tools. Without it there is no build.
 if ! command -v swift >/dev/null 2>&1; then
@@ -74,7 +74,7 @@ if [[ -s "$TOKEN_FILE" ]]; then
   chmod 600 "$TOKEN_FILE"
   say "panel token: already present"
 else
-  say "panel token: Sentinel will generate it on first launch"
+  say "panel token: Nodlock will generate it on first launch"
 fi
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ if [[ -z "$URL" ]]; then
 
   SENTINEL_URL is the address your phone will use for the panel.
     - Remote access: your own Cloudflare Tunnel hostname, e.g.
-        https://sentinel.example.com
+        https://nodlock.example.com
     - Same network only: a LAN or VPN address the phone can reach, e.g.
         http://192.168.1.42:${PORT}
     - Leave blank for ${DEFAULT_URL} (Mac only, the phone cannot reach it).
@@ -140,8 +140,8 @@ if ! grep -q 'OPG_APNS_TEAM_ID' "$ENV_FILE"; then
   cat >> "$ENV_FILE" <<'APNS'
 
 # --- APNs (push to the native iOS app) -------------------------------------
-# Sentinel pushes to your phone with a token-based (.p8) APNs key. Fill these
-# in, uncomment, and restart Sentinel. Until then the Mac panel still works,
+# Nodlock pushes to your phone with a token-based (.p8) APNs key. Fill these
+# in, uncomment, and restart Nodlock. Until then the Mac panel still works,
 # you just get no push notifications.
 #
 #   1. developer.apple.com > Certificates, Identifiers & Profiles > Keys
@@ -150,7 +150,7 @@ if ! grep -q 'OPG_APNS_TEAM_ID' "$ENV_FILE"; then
 #   2. Save it as:  ~/.config/op-guard/apns/AuthKey_<KEY_ID>.p8   (chmod 600)
 #   3. KEY_ID  = the 10-char id shown next to the key.
 #      TEAM_ID = developer.apple.com > Membership > Team ID (10 chars).
-#      BUNDLE_ID = the iOS app's bundle identifier, from SentineliOS/project.yml.
+#      BUNDLE_ID = the iOS app's bundle identifier, from NodlockiOS/project.yml.
 #   4. ENV: "sandbox" for a debug build from Xcode, "production" for TestFlight
 #      or the App Store. Wrong value = pushes silently fail.
 #
@@ -164,15 +164,15 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Build and install the app.
 # ---------------------------------------------------------------------------
-say "Building Sentinel.app"
+say "Building Nodlock.app"
 # build-app.sh ad-hoc signs by default and honours SIGN_IDENTITY. Ad-hoc is fine
 # for local use; a Developer ID identity survives moving the bundle to another Mac.
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
   say "  signing identity: ${SIGN_IDENTITY}"
-  ( cd "$HERE/SentinelApp" && SIGN_IDENTITY="$SIGN_IDENTITY" ./build-app.sh )
+  ( cd "$HERE/NodlockMac" && SIGN_IDENTITY="$SIGN_IDENTITY" ./build-app.sh )
 else
   say "  no SIGN_IDENTITY set, using ad-hoc signing"
-  ( cd "$HERE/SentinelApp" && ./build-app.sh )
+  ( cd "$HERE/NodlockMac" && ./build-app.sh )
 fi
 [[ -d "$APP_SRC" ]] || die "build produced no bundle at $APP_SRC"
 
@@ -181,7 +181,7 @@ fi
 if [[ -f "$PLIST" ]]; then
   launchctl unload "$PLIST" >/dev/null 2>&1 || true
 fi
-pkill -f "$APP_DST/Contents/MacOS/Sentinel" >/dev/null 2>&1 || true
+pkill -f "$APP_DST/Contents/MacOS/Nodlock" >/dev/null 2>&1 || true
 
 say "Installing to $APP_DST"
 mkdir -p "$HOME/Applications"
@@ -199,11 +199,11 @@ cat > "$PLIST" <<PLIST
 <plist version="1.0"><dict>
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
-  <array><string>${APP_DST}/Contents/MacOS/Sentinel</string></array>
+  <array><string>${APP_DST}/Contents/MacOS/Nodlock</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/tmp/sentinel.out</string>
-  <key>StandardErrorPath</key><string>/tmp/sentinel.out</string>
+  <key>StandardOutPath</key><string>/tmp/nodlock.out</string>
+  <key>StandardErrorPath</key><string>/tmp/nodlock.out</string>
 </dict></plist>
 PLIST
 # unload-then-load so a re-run picks up the fresh binary and plist.
@@ -223,15 +223,15 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibil
 cat <<DONE
 
 ------------------------------------------------------------------
-Sentinel is installed. Four things left, in order:
+Nodlock is installed. Four things left, in order:
 
   1. Grant the two permissions.
-     System Settings > Privacy & Security, enable Sentinel under
+     System Settings > Privacy & Security, enable Nodlock under
      BOTH "Screen Recording" and "Accessibility".
      Screen Recording needs a relaunch:  launchctl kickstart -k gui/\$UID/${LABEL}
 
   2. Build the iOS app.
-     Open SentineliOS/ in Xcode, pick YOUR Apple Developer team, set
+     Open NodlockiOS/ in Xcode, pick YOUR Apple Developer team, set
      your own bundle id, add the Push Notifications and Background
      Modes > Remote notifications capabilities, run it on your phone.
      Create an APNs .p8 key at developer.apple.com, drop it in
@@ -244,11 +244,11 @@ Sentinel is installed. Four things left, in order:
      reaches the Mac on your own network.
 
   4. Pair.
-     Click the Sentinel menu-bar icon > "Setup..." and scan the QR
+     Click the Nodlock menu-bar icon > "Setup..." and scan the QR
      with the iOS app.
 
 Config:      ${ENV_FILE}
 Panel token: ${TOKEN_FILE}
-Logs:        /tmp/sentinel.out
+Logs:        /tmp/nodlock.out
 ------------------------------------------------------------------
 DONE

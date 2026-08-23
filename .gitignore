@@ -3,10 +3,10 @@
 DerivedData/
 *.xcuserstate
 **/xcuserdata/
-# XcodeGen-generated project (regenerate: cd SentineliOS && xcodegen generate)
-SentineliOS/Sentinel.xcodeproj/
+# XcodeGen-generated project (regenerate: cd NodlockiOS && xcodegen generate)
+NodlockiOS/Nodlock.xcodeproj/
 # Built app bundle (produced by build-app.sh / install.sh)
-SentinelApp/Sentinel.app/
+NodlockMac/Nodlock.app/
 # Local secrets / config (these live in ~/.config/op-guard anyway)
 *.p8
 cf-service-token.json
@@ -18,6 +18,6 @@ SPEC-*.md
 # Logs / OS
 *.log
 .DS_Store
-SentineliOS/.env
+NodlockiOS/.env
 docs-private/
-SentineliOS/fastlane/metadata.local/
+NodlockiOS/fastlane/metadata.local/
