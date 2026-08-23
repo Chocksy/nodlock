@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# op-guard: phone-approval gate in front of `op` for LLM agents.
+# Agents call `op-guard <op args...>`. You get a push with Approve/Deny.
+# On Approve it runs `op` with a service-account token. Your own op/app
+# usage is untouched (keep using Touch ID directly).
+#
+# Setup:
+#   1. ntfy app on phone, subscribe to two topics (long random names):
+#        opg-req-<random>   (requests, the one with buttons)
+#        opg-res-<random>   (replies; subscribe not needed, but harmless)
+#   2. Service account token in ~/.config/op-guard/token (chmod 600).
+#   3. export OPG_TOPIC=opg-req-<random> (in the agent's env / launchd).
+#
+# ponytail: public ntfy.sh + random topic names. Anyone who learns the
+# reply topic can approve. Upgrade path: self-hosted ntfy with access
+# tokens, or Tailscale-only ntfy.
+set -euo pipefail
+
+NTFY="${OPG_NTFY:-https://ntfy.sh}"
+TOPIC="${OPG_TOPIC:?set OPG_TOPIC to your random request topic}"
+REPLY="${OPG_REPLY:-${TOPIC/req/res}}"
+TIMEOUT="${OPG_TIMEOUT:-120}"
+TOKEN_FILE="${OPG_TOKEN_FILE:-$HOME/.config/op-guard/token}"
+GRACE="${OPG_GRACE:-0}"   # seconds an approval stays valid; 0 = every call asks
+STAMP="${TMPDIR:-/tmp}/op-guard.approved"
+
+if [[ "${1:-}" == "--test" ]]; then
+  set -- vault list
+fi
+
+# ponytail: single global grace stamp, per-vault stamps if scoping matters
+if (( GRACE > 0 )) && [[ -f "$STAMP" ]] && (( $(date +%s) - $(stat -f %m "$STAMP") < GRACE )); then
+  OP_SERVICE_ACCOUNT_TOKEN="$(cat "$TOKEN_FILE")" exec op "$@"
+fi
+
+req_id="$(uuidgen | tr 'A-F' 'a-f' | cut -c1-8)"
+summary="op $*"
+
+curl -fsS -X POST "$NTFY/$TOPIC" \
+  -H "Title: 1Password: agent on $(hostname -s)" \
+  -H "Priority: high" -H "Tags: closed_lock_with_key" \
+  -H "Actions: http, Approve, $NTFY/$REPLY, method=POST, body=approve:$req_id, clear=true; http, Deny, $NTFY/$REPLY, method=POST, body=deny:$req_id, clear=true" \
+  -d "$summary" >/dev/null
+
+echo "op-guard: waiting for phone approval ($req_id, ${TIMEOUT}s)..." >&2
+
+# Long-poll the reply topic; since=30s covers the publish/subscribe gap.
+verdict="$(curl -fsSN --max-time "$TIMEOUT" "$NTFY/$REPLY/raw?since=30s" 2>/dev/null \
+  | grep -m1 ":$req_id" || true)"
+
+case "$verdict" in
+  approve:*)
+    echo "op-guard: approved" >&2
+    touch "$STAMP"
+    OP_SERVICE_ACCOUNT_TOKEN="$(cat "$TOKEN_FILE")" exec op "$@"
+    ;;
+  deny:*)
+    echo "op-guard: DENIED from phone" >&2; exit 77 ;;
+  *)
+    echo "op-guard: timed out after ${TIMEOUT}s" >&2; exit 78 ;;
+esac

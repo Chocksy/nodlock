@@ -1,0 +1,1 @@
+Your Mac asked for a password. You are not there. Nodlock pushes the prompt to your phone, you approve it with Face ID, and the Mac types it in. Try the built-in demo.

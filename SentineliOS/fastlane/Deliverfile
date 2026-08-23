@@ -1,0 +1,36 @@
+# fastlane Deliverfile — Nodlock (iOS)
+# Docs: https://docs.fastlane.tools/actions/deliver/
+#
+# These are the defaults for every `deliver` invocation. Individual lanes in the
+# Fastfile override them (the `release` lane flips submit_for_review to true and
+# uploads a binary).
+
+app_identifier(ENV["SENTINEL_BUNDLE_ID"] || "com.example.sentinel.ios")
+team_id(ENV["SENTINEL_TEAM_ID"] || "YOURTEAMID")
+
+# Where the text and images live, relative to this file.
+metadata_path("./metadata")
+screenshots_path("./screenshots")
+
+# Metadata-only by default. The `beta` and `release` lanes build and upload the
+# binary themselves.
+skip_binary_upload(true)
+skip_screenshots(false)
+skip_metadata(false)
+skip_app_version_update(false)
+
+# Never auto-submit or auto-release from a default `deliver` run.
+submit_for_review(false)
+automatic_release(false)
+
+# Overwrite whatever is currently in App Store Connect with the local files, and
+# do not stop for the interactive "does this look right?" confirmation.
+force(true)
+overwrite_screenshots(true)
+
+# precheck logs in with an Apple ID, which defeats the point of the API key auth
+# used by the lanes. Keep it off; run `fastlane precheck_local` instead.
+run_precheck_before_submit(false)
+precheck_include_in_app_purchases(false)
+
+# Free app, no IAPs to validate.

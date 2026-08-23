@@ -1,0 +1,20 @@
+# fastlane Appfile — Nodlock (iOS)
+# Docs: https://docs.fastlane.tools/advanced/#appfile
+
+app_identifier(ENV["SENTINEL_BUNDLE_ID"] || "com.example.sentinel.ios")
+
+# Apple ID (the developer account email) used by any lane that falls back to
+# username/password auth. The API-key lanes in the Fastfile do NOT need it.
+# Set it in the environment instead of hardcoding:
+#   export APPLE_ID="you@example.com"
+apple_id(ENV["APPLE_ID"] || "REPLACE_ME@example.com")
+
+# Developer Portal team (code signing, provisioning).
+team_id(ENV["SENTINEL_TEAM_ID"] || "YOURTEAMID")
+
+# App Store Connect team id ("itc" team). Only needed when the Apple ID belongs
+# to more than one App Store Connect team. Find it with:
+#   fastlane produce --help   # or: https://appstoreconnect.apple.com URL after login
+# Set it in the environment when you have it:
+#   export ITC_TEAM_ID="123456789"
+itc_team_id(ENV["ITC_TEAM_ID"]) if ENV["ITC_TEAM_ID"]

@@ -1,0 +1,23 @@
+# Swift / Xcode build output
+.build/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/
+# XcodeGen-generated project (regenerate: cd SentineliOS && xcodegen generate)
+SentineliOS/Sentinel.xcodeproj/
+# Built app bundle (produced by build-app.sh / install.sh)
+SentinelApp/Sentinel.app/
+# Local secrets / config (these live in ~/.config/op-guard anyway)
+*.p8
+cf-service-token.json
+panel-token
+devices.json
+# Internal tracker (not for public)
+CHECKLIST.md
+SPEC-*.md
+# Logs / OS
+*.log
+.DS_Store
+SentineliOS/.env
+docs-private/
+SentineliOS/fastlane/metadata.local/

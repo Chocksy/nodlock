@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Smart BROWSER shim. ALWAYS opens the URL in your real default browser, and
+# ADDITIONALLY sends a "Login needed" push to your phone (via the native Sentinel
+# app's APNs) ONLY when the URL looks like an auth/login/device-authorization
+# flow. Safe as a global $BROWSER: it augments, never hijacks.
+#   export BROWSER="$HOME/.local/bin/push-url"
+# Extra match patterns (one extended-regex per line): ~/.config/op-guard/push-url-filter
+set -uo pipefail
+[ -f "$HOME/.config/op-guard/env" ] && . "$HOME/.config/op-guard/env"
+PORT="${SENTINEL_PORT:-8377}"
+TOKEN_FILE="$HOME/.config/op-guard/panel-token"
+
+TEST=0; [ "${1:-}" = "--test" ] && { TEST=1; shift; }
+url="${1:-}"
+[ "$TEST" = 0 ] && [ -z "$url" ] && exit 0
+
+patterns='user_code=|device[_/?][^ ]*code|/oauth|/authorize|/sso/|/login|/signin|awsapps\.com|cloudflareaccess\.com|github\.com/login/device|accounts\.google\.com|okta\.com|login\.microsoftonline|auth0\.com'
+if [ -s "$HOME/.config/op-guard/push-url-filter" ]; then
+  extra="$(grep -vE '^\s*(#|$)' "$HOME/.config/op-guard/push-url-filter" | paste -sd'|' -)"
+  [ -n "$extra" ] && patterns="$patterns|$extra"
+fi
+is_auth() { printf '%s' "$1" | grep -qiE "$patterns"; }
+
+if [ "$TEST" = 1 ]; then
+  for u in \
+    "https://hubstaff.awsapps.com/start/#/device?user_code=CSGD-VXHN" \
+    "https://github.com/login/device" \
+    "https://example.com/blog/post"; do
+    is_auth "$u" && echo "AUTH   $u" || echo "plain  $u"
+  done
+  exit 0
+fi
+
+open "$url" 2>/dev/null || true   # always open locally
+
+if is_auth "$url" && [ -r "$TOKEN_FILE" ]; then
+  tok="$(cat "$TOKEN_FILE")"
+  if curl -fsS -X POST --data-urlencode "url=$url" \
+       "http://127.0.0.1:${PORT}/notify?k=${tok}" >/dev/null 2>&1; then
+    echo "push-url: auth URL → opened locally + APNs push to phone" >&2
+  else
+    echo "push-url: opened locally (phone push failed — is Sentinel running?)" >&2
+  fi
+else
+  echo "push-url: opened locally (not an auth URL)" >&2
+fi
