@@ -10,6 +10,23 @@ It also catches auth URLs. Point `$BROWSER` at the `push-url` shim and any
 device-code, OAuth or SSO link an agent opens lands on your phone as a tappable
 link, instead of a browser window you are not sitting in front of.
 
+
+## Screenshots
+
+**iPhone** (shown in the built-in demo mode):
+
+| Pair | Prompt arrives | Face ID | Unlocked | Recent logins |
+|---|---|---|---|---|
+| ![Pairing](docs/img/ios-pairing.png) | ![Prompt](docs/img/ios-prompt.png) | ![Face ID](docs/img/ios-faceid.png) | ![Unlocked](docs/img/ios-unlocked.png) | ![Recent logins](docs/img/ios-logins.png) |
+
+**Mac** (menu-bar app):
+
+| Menu bar | Setup | Pairing QR |
+|---|---|---|
+| ![Menu](docs/img/mac-menu.png) | ![Setup](docs/img/mac-setup.png) | ![Pair QR](docs/img/mac-pairing-qr.png) |
+
+<sub>The pairing QR above uses a placeholder URL; the real one carries your private pairing token and is only ever shown on your own Mac.</sub>
+
 ## Architecture
 
 ```
