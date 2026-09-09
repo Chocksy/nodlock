@@ -10,6 +10,8 @@ struct UnlockView: View {
     @State private var returnAfter = true
     @State private var toast: String?
     @State private var showUnpairAlert = false
+    @State private var pendingAction: MacAction?
+    @State private var showActionAlert = false
     @State private var busy = false
     @FocusState private var pwFocused: Bool
     @Environment(\.scenePhase) private var scenePhase
@@ -25,6 +27,7 @@ struct UnlockView: View {
                 demoBanner
                 header
                 card
+                actionsCard
                 loginsCard
                 Text("Private and encrypted. Nothing is stored.")
                     .font(.system(size: 12))
@@ -53,6 +56,18 @@ struct UnlockView: View {
             Button("Unpair", role: .destructive) { model.unpair() }
         } message: {
             Text("Nodlock will forget the host and token, and ask the Mac to stop sending push notifications.")
+        }
+        .alert("Run on your Mac?", isPresented: $showActionAlert, presenting: pendingAction) { a in
+            Button("Cancel", role: .cancel) {}
+            Button("Run") {
+                send {
+                    try await vm.client?.runAction(id: a.id)
+                    await vm.refresh()
+                }
+                toastNow("Sent to Mac")
+            }
+        } message: { a in
+            Text("\(a.label) will be applied on the Mac now. Its current connection may drop for a moment.")
         }
     }
 
@@ -109,6 +124,7 @@ struct UnlockView: View {
 
     private var chipLabel: String {
         guard vm.online else { return "offline" }
+        if vm.status?.isLocked == true { return "mac locked" }
         if vm.status?.hasDialog == true { return "prompt active" }
         if let up = vm.status?.uptime_s { return "idle · \(Int(up / 60))m up" }
         return "idle"
@@ -116,6 +132,7 @@ struct UnlockView: View {
 
     private var chipTone: ChipTone {
         if !vm.online { return .danger }
+        if vm.status?.isLocked == true { return .warn }
         return vm.status?.hasDialog == true ? .ok : .dim
     }
 
@@ -130,13 +147,19 @@ struct UnlockView: View {
                     .padding(.horizontal, 2)
 
                 DialogShot(image: vm.shot, hasDialog: vm.status?.hasDialog == true) { fx, fy in
+                    if vm.status?.isLocked == true {
+                        toastNow("Mac is locked. Unlock it first.")
+                        return
+                    }
                     send { try await vm.client?.click(fx: fx, fy: fy) }
                     toastNow("Clicked")
                 }
 
                 // Autofill target: .password lets iOS / 1Password offer the saved password.
                 HStack(spacing: 8) {
-                    SecureField("Password (Face ID / 1Password)", text: $password)
+                    SecureField(vm.status?.isLocked == true
+                                ? "Mac login password"
+                                : "Password (Face ID / 1Password)", text: $password)
                         .textContentType(.password)
                         .submitLabel(.go)
                         .focused($pwFocused)
@@ -154,7 +177,7 @@ struct UnlockView: View {
                     Button(action: unlock) {
                         HStack(spacing: 6) {
                             if busy { ProgressView().tint(.white).scaleEffect(0.8) }
-                            Text(busy ? "Sending" : "Unlock")
+                            Text(busy ? "Sending" : (vm.status?.isLocked == true ? "Unlock Mac" : "Unlock"))
                         }
                     }
                     .buttonStyle(PrimaryButtonStyle())
@@ -176,6 +199,53 @@ struct UnlockView: View {
                 }
             }
         }
+    }
+
+    // Whatever the paired Mac chooses to publish. Nothing is hardcoded here:
+    // ids and labels arrive in /status, so a Mac with none shows no card.
+    @ViewBuilder private var actionsCard: some View {
+        if let actions = vm.status?.actions, !actions.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Mac actions")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.txt)
+                    HStack(spacing: 8) {
+                        ForEach(actions) { a in
+                            Button {
+                                pendingAction = a
+                                showActionAlert = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    if a.active {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(Theme.ok)
+                                    }
+                                    Text(a.label)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(GhostButtonStyle())
+                            .disabled(vm.status?.action_pending != nil)
+                        }
+                    }
+                    if let p = vm.status?.action_pending {
+                        HStack(spacing: 8) {
+                            ProgressView().tint(Theme.dim)
+                            Text("Applying \(label(for: p))…")
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.dim)
+                    }
+                }
+            }
+        }
+    }
+
+    // The Mac sends ids in `action_pending`; fall back to the raw id if the
+    // matching action has since disappeared from the list.
+    private func label(for id: String) -> String {
+        vm.status?.actions?.first { $0.id == id }?.label ?? id
     }
 
     @ViewBuilder private var loginsCard: some View {
@@ -256,6 +326,9 @@ struct UnlockView: View {
 
     private var ownerText: String {
         guard vm.online else { return "Can't reach your Mac right now." }
+        if vm.status?.isLocked == true {
+            return "Mac is locked. Type your Mac password, then tap Unlock Mac."
+        }
         if let owner = vm.status?.dialog, !owner.isEmpty { return "\(owner) is asking" }
         return "No security prompt right now."
     }
@@ -281,6 +354,7 @@ struct UnlockView: View {
             do {
                 try await vm.client?.type(text: pw, enter: enter)
                 password = ""
+                await vm.refresh()
                 toastNow("Typed on Mac ✓")
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {

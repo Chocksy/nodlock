@@ -1,39 +1,24 @@
-Thank you for reviewing Nodlock.
+Nodlock is a companion app for a free open-source macOS menu-bar utility (github.com/Chocksy/nodlock). When the user's Mac shows a security prompt (e.g. the 1Password unlock dialog), the Mac app sends a push; the user sees a screenshot of the prompt, authenticates with Face ID, types the password, and it is typed into the Mac's dialog over an encrypted channel. It also routes CLI login URLs (OAuth device-code flows) to the phone. Target audience: developers and technical users running automation on a Mac they are not sitting at.
 
-WHAT IT IS
-Nodlock is the iPhone half of a two-part tool. The other half is a free, open-source menu-bar app the user installs on their own Mac. When the Mac shows a security prompt (1Password unlock, macOS password dialog, keychain prompt), the Mac companion sends a push notification to the phone. The user opens Nodlock, passes Face ID, sees a screenshot of the prompt, types the password, and taps Unlock. The password is sent to the user's own Mac and typed into the dialog. The companion can also forward CLI login links (OAuth, SSO, device codes) to the phone.
+HOW TO REVIEW WITHOUT A MAC: tap "Try a demo" on the pairing screen. It simulates a paired Mac end to end:
+1. Launch the app. On the pairing screen tap "Try a demo" (below the paste field).
+2. Allow notifications if prompted. An amber banner confirms demo mode; nothing reaches a real Mac.
+3. Within ~5 seconds a simulated 1Password unlock prompt appears with a screenshot.
+4. Face ID (or passcode) gates the screen; in the demo a failed/cancelled prompt never blocks.
+5. Type any text in the password field and tap Unlock. The prompt clears after a moment, simulating a successful unlock. It re-arms a few seconds later so the flow can be repeated.
+6. Scroll down: "Recent logins" lists a sample CLI login; tapping a row opens the URL.
+7. Unpair via the top-right menu ("Unpair the demo Mac") to return to pairing.
 
-NO LOGIN REQUIRED
-There is no account, no sign-up, and no server run by us. The app talks only to the user's own Mac.
+NO ACCOUNT, NO LOGIN, NO PAYMENTS: there is no registration, no credentials, no purchases, no subscriptions, no user-generated content.
 
-HOW TO TEST WITHOUT A MAC: DEMO MODE
-You do not need the Mac companion to review the full flow. The app ships with a demo mode that simulates a paired Mac.
+DATA: the developer operates no server and collects nothing. Passwords transit only from the phone to the user's own Mac over an encrypted channel and are never stored or logged. Push payloads contain only a title, the Mac's hostname, and (for login pings) a URL.
 
-1. Launch Nodlock. You land on the pairing screen.
-2. Tap "Try a demo" at the bottom of the pairing screen. The app pairs with a simulated Mac and shows a "Demo" banner.
-3. Allow notifications if asked (optional; the demo works either way).
-4. Wait about 5 seconds. A simulated 1Password unlock prompt appears, with a screenshot of the dialog, exactly as it would from a real Mac.
-5. Authenticate with Face ID, Touch ID, or the device passcode. (On a device without biometrics enrolled, the passcode prompt appears instead.)
-6. Type any text into the password field and tap "Unlock". The simulated prompt clears and the screen returns to "No prompt waiting", which is what happens on a real Mac once the dialog is dismissed.
-7. Scroll down to see the "Recent logins" card. In demo mode it holds a sample forwarded login link to show how CLI sign-in forwarding looks.
-8. To leave demo mode, open the "..." menu on the unlock screen and choose Unpair. You return to the pairing screen.
+EXTERNAL SERVICES: Apple Push Notification service, and the user's own Mac (local network, or a secure remote connection the user sets up themselves). No data providers, auth services, payment processors, AI services, analytics, or third-party SDKs.
 
-Nothing in demo mode leaves the device. No network calls are made.
+TESTED ON: physical iPhone 15 Pro (latest iOS, Xcode + this TestFlight build); iPhone 17 Pro Max / 11 Pro Max simulators (iOS 26.5). Companion tested on a Mac mini, latest macOS.
 
-GUIDELINE NOTES
+REGIONAL DIFFERENCES: none; identical in all regions. REGULATED INDUSTRY: not applicable. "1Password" is referenced descriptively as an example of a macOS prompt; the app does not integrate with or embed 1Password.
 
-2.1 App Completeness: the app is fully functional. The demo mode exists so you can exercise every screen without installing the macOS companion. With a real Mac, the flow is identical; the screenshot and prompt come from the Mac instead of the simulator.
+PERMISSIONS USED: notifications (prompt alerts), camera (QR pairing scan), Face ID (gate before typing a password). The demo requires none of these to complete.
 
-4.2 Minimum Functionality: Nodlock is a companion app with real, ongoing utility: it receives push notifications, gates access with biometrics, renders a live screenshot stream, relays typed input and taps, and keeps a list of forwarded login links. It is a native SwiftUI app, not a web wrapper.
-
-5.1.1 Data Collection and Storage: we collect nothing. There is no developer server. The pairing host and token are stored in the iOS Keychain on the user's phone. Passwords typed by the user are sent once to the user's own Mac over a channel the user controls (Cloudflare Tunnel with Cloudflare Access, VPN, or local network), typed into the dialog, and never stored or logged on either side. App Privacy is declared as "Data Not Collected". A privacy policy is linked.
-
-2.5.4 Background Modes: the only background mode is remote-notification, used to receive the "a prompt is waiting" push. The app does no background processing beyond handling that notification.
-
-Credential handling: every password entry is user-initiated. The user sees a screenshot of the exact prompt, authenticates with Face ID, and types the password themselves (iOS and 1Password autofill are supported through the standard SecureField). Nodlock never reads, stores, or syncs credentials. It relays what the user typed to the user's own machine, once.
-
-Push notification content: prompt notifications contain a title and the name of the app that raised the prompt. Login notifications contain the title "Login needed", the Mac's hostname, and the login URL. No screenshot or password is ever sent through APNs.
-
-Camera: used only to scan the pairing QR code. Face ID: used only to gate the unlock screen.
-
-If anything is unclear, reply through Resolution Center and we will answer quickly.
+MAC ACTIONS: an optional card of buttons that appears only when the user's own Mac companion publishes named actions in its status response. Tapping one sends the action id to the user's Mac over the same HTTPS channel. The demo exposes none, so the card is not visible in demo mode.

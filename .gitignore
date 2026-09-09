@@ -21,3 +21,6 @@ SPEC-*.md
 NodlockiOS/.env
 docs-private/
 NodlockiOS/fastlane/metadata.local/
+# fastlane build output
+NodlockiOS/*.ipa
+NodlockiOS/*.dSYM.zip

@@ -1,1 +1,1 @@
-Approve Mac prompts on iPhone
+Approve auth prompts remotely

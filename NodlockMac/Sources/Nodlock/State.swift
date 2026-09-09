@@ -20,6 +20,8 @@ final class AppState {
     private var _pushes = 0
     private var alerted = Set<Int>()
     private var _logins: [(url: String, ts: Int)] = []
+    private var actionsCache: (at: Date, list: [[String: Any]])?
+    private var _actionPending: String?
     let started = Int(Date().timeIntervalSince1970)
 
     var dialog: Dialog? {
@@ -62,6 +64,37 @@ final class AppState {
     func clearLogins() {
         lock.lock(); defer { lock.unlock() }
         _logins.removeAll()
+    }
+
+    // Cached 5s: the phone polls /status every 2s and each probe spawns two
+    // processes. Probe outside the lock so HTTP threads never wait on a subprocess.
+    func actionsList() -> [[String: Any]] {
+        guard Shell.vpn != nil else { return [] }
+        lock.lock()
+        if let cache = actionsCache, Date().timeIntervalSince(cache.at) < 5 {
+            let list = cache.list
+            lock.unlock()
+            return list
+        }
+        lock.unlock()
+
+        let list = probeActions()
+        lock.lock(); defer { lock.unlock() }
+        actionsCache = (at: Date(), list: list)
+        return list
+    }
+    func invalidateActions() {
+        lock.lock(); defer { lock.unlock() }
+        actionsCache = nil
+    }
+
+    var actionPending: String? {
+        lock.lock(); defer { lock.unlock() }
+        return _actionPending
+    }
+    func setActionPending(_ id: String?) {
+        lock.lock(); defer { lock.unlock() }
+        _actionPending = id
     }
 
     var uptime: Int { Int(Date().timeIntervalSince1970) - started }
@@ -110,4 +143,10 @@ func findDialog() -> Dialog? {
                       w: Double(rect.width), h: Double(rect.height))
     }
     return nil
+}
+
+// True while the lock screen (loginwindow) is up. Public CoreGraphics API.
+func screenLocked() -> Bool {
+    guard let d = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+    return (d["CGSSessionScreenIsLocked"] as? Bool) ?? false
 }

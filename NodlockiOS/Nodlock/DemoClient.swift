@@ -100,6 +100,9 @@ final class DemoClient: PanelClient {
         lock.withLock { loginList = [] }
     }
 
+    // The fake Mac publishes no actions, so there is nothing to run.
+    func runAction(id: String) async throws {}
+
     // MARK: - The mock screenshot
 
     // Drawn once at runtime and cached, so nothing has to ship in the bundle.

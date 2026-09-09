@@ -7,6 +7,14 @@ struct LoginRequest: Decodable, Identifiable, Equatable {
     var id: String { "\(ts)-\(url)" }
 }
 
+// One named action the paired Mac publishes in GET /status. Labels are whatever
+// that Mac decides to send; the phone only echoes them back by id.
+struct MacAction: Decodable, Identifiable, Equatable {
+    let id: String
+    let label: String
+    let active: Bool
+}
+
 // Shape of GET /status (see HTTPServer.handleGET). `dialog` is the prompt owner
 // string, or null when no security prompt is on screen.
 struct NodlockStatus: Decodable, Equatable {
@@ -16,9 +24,13 @@ struct NodlockStatus: Decodable, Equatable {
     var topic_set: Bool?
     var panel_url: String?
     var dialog: String?
+    var locked: Bool?            // absent on older Macs; treat as not locked
     var logins: [LoginRequest]?  // absent on older Macs; treat as []
+    var actions: [MacAction]?    // absent on older Macs and in demo; card hidden
+    var action_pending: String?  // id of the action the Mac is applying right now
 
     var hasDialog: Bool { dialog?.isEmpty == false }
+    var isLocked: Bool { locked == true }
 }
 
 enum NodlockError: Error, LocalizedError {
@@ -42,7 +54,7 @@ struct NodlockClient: PanelClient {
 
     private var session: URLSession {
         let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 8
+        cfg.timeoutIntervalForRequest = 20
         cfg.waitsForConnectivity = false
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: cfg)
@@ -126,6 +138,10 @@ struct NodlockClient: PanelClient {
 
     func clearLogins() async throws {
         try await post("/logins/clear", fields: [])
+    }
+
+    func runAction(id: String) async throws {
+        try await post("/action", fields: [("id", id)])
     }
 
     // The action routes answer 303 redirect (to "/"); treat 2xx and 3xx as success.

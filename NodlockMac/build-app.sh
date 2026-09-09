@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 
 APP="Nodlock.app"
 BUNDLE_ID="${BUNDLE_ID:-com.example.sentinel}"
+VERSION="${VERSION:-1.1.0}"
 
 echo "==> swift build -c release"
 swift build -c release
@@ -34,9 +35,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key>
 	<string>${BUNDLE_ID}</string>
 	<key>CFBundleVersion</key>
-	<string>1.0</string>
+	<string>${VERSION}</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>${VERSION}</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleExecutable</key>

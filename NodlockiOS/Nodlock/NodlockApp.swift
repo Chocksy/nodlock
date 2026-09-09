@@ -87,6 +87,10 @@ final class AppModel: ObservableObject {
         demoAuthNote = nil
         KeychainStore.save(pairing)
         self.pairing = pairing
+        // Ask for notification permission so the reviewer (and real users) see the
+        // prompt. The demo does not send push, but this mirrors real pairing and
+        // satisfies App Review's request to show permission prompts on first run.
+        requestPushAuthorization()
     }
 
     func unpair() {

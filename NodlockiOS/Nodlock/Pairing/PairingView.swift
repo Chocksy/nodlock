@@ -18,7 +18,7 @@ struct PairingView: View {
                         Text("Pair with your Mac")
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Theme.txt)
-                        Text("Open the Nodlock menu-bar app on your Mac and scan the QR code it shows. Everything stays on your tailnet.")
+                        Text("Open the Nodlock menu-bar app on your Mac and scan the QR code it shows. Everything stays on your own network.")
                             .font(.system(size: 14))
                             .foregroundStyle(Theme.dim)
                             .fixedSize(horizontal: false, vertical: true)
@@ -38,7 +38,7 @@ struct PairingView: View {
                         Label("Or paste the panel link", systemImage: "link")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(Theme.dim)
-                        TextField("http://mac-mini.tailnet.ts.net:8377?k=…", text: $manual)
+                        TextField("http://mac-mini.local:8377?k=…", text: $manual)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
@@ -65,7 +65,7 @@ struct PairingView: View {
 
                 demoLink
 
-                Text("Tailnet-only. Nothing is stored on a server.")
+                Text("Your network only. Nothing is stored on a server.")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.dim)
                     .frame(maxWidth: .infinity, alignment: .center)

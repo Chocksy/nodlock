@@ -109,15 +109,27 @@ final class HTTPServer {
 
         if path.hasPrefix("/status") {
             let cfg = Config.shared
-            let obj: [String: Any] = [
+            let locked = screenLocked()
+            // Old iOS builds render this as "... 1Password is asking"; new ones read "locked".
+            let dialogValue: Any = d.map {
+                locked ? "Mac is locked, unlock it first. \($0.owner)" : $0.owner
+            } ?? NSNull()
+            var obj: [String: Any] = [
                 "ok": true,
                 "uptime_s": state.uptime,
                 "pushes": state.pushes,
                 "topic_set": !cfg.topic.isEmpty,
                 "panel_url": cfg.panelURL.isEmpty ? NSNull() : cfg.panelURL,
-                "dialog": d?.owner ?? NSNull(),
+                "dialog": dialogValue,
+                "locked": locked,
                 "logins": state.loginsList(),
             ]
+            // Both keys are omitted on Macs without the switch script, so the
+            // phone hides the card instead of showing an empty one.
+            if Shell.vpn != nil {
+                obj["actions"] = state.actionsList()
+                obj["action_pending"] = state.actionPending ?? NSNull()
+            }
             let json = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data("{\"ok\":true}".utf8)
             return httpResponse(status: "200 OK", contentType: "application/json", body: json)
         }
@@ -179,23 +191,56 @@ final class HTTPServer {
             return httpResponse(status: "200 OK", contentType: "application/json",
                                 body: Data("{\"ok\":true}\n".utf8))
         }
+        if path == "/action" {
+            guard let action = ACTIONS.first(where: { $0.id == (form["id"] ?? "") }) else {
+                return httpResponse(status: "400 Bad Request", contentType: "application/json",
+                                    body: Data("{\"ok\":false,\"error\":\"unknown action\"}\n".utf8))
+            }
+            guard let vpn = Shell.vpn else {
+                return httpResponse(status: "500 Internal Server Error", contentType: "application/json",
+                                    body: Data("{\"ok\":false,\"error\":\"vpn tool not found\"}\n".utf8))
+            }
+            guard AppState.shared.actionPending == nil else {
+                return httpResponse(status: "409 Conflict", contentType: "application/json",
+                                    body: Data("{\"ok\":false,\"error\":\"busy\"}\n".utf8))
+            }
+            // Answer immediately: the switch takes seconds and can drop the very
+            // link this request came in on. The phone polls /status for the result.
+            AppState.shared.setActionPending(action.id)
+            DispatchQueue.global().async {
+                let (code, _) = Shell.run(vpn, [action.vpnArg], timeout: 60)
+                FileHandle.standardError.write(Data("nodlock: action \(action.id) -> exit \(code)\n".utf8))
+                AppState.shared.invalidateActions()
+                AppState.shared.setActionPending(nil)
+            }
+            return httpResponse(status: "200 OK", contentType: "application/json",
+                                body: Data("{\"ok\":true}\n".utf8))
+        }
 
         if path == "/click", let d = d {
             let fx = Double(form["fx"] ?? "") ?? 0
             let fy = Double(form["fy"] ?? "") ?? 0
             clickAt(x: d.x + fx * d.w, y: d.y + fy * d.h)
         } else if path == "/type", let text = form["text"], !text.isEmpty {
-            // No click, no activation: security modals already own key focus.
-            typeText(text)
-            if form["enter"] != nil {
-                Thread.sleep(forTimeInterval: 0.1)
-                press("return")
+            if screenLocked() {
+                // At the lock screen the text is the Mac login password, not dialog input.
+                unlockScreen(password: text, enter: form["enter"] != nil)
+                Thread.sleep(forTimeInterval: 1.0)
+                FileHandle.standardError.write(Data("nodlock: unlock -> locked=\(screenLocked())\n".utf8))
+            } else {
+                // No click, no activation: security modals already own key focus.
+                typeText(text)
+                if form["enter"] != nil {
+                    Thread.sleep(forTimeInterval: 0.1)
+                    press("return")
+                }
             }
         } else if path == "/key", let k = form["k"], KEYCODES[k] != nil {
             press(k)
         }
-        Thread.sleep(forTimeInterval: 0.4) // let the UI settle before the redirect re-screenshots
-        return redirect()
+        // 200, not 303: the iOS client follows redirects and would lose ?k= (401).
+        return httpResponse(status: "200 OK", contentType: "application/json",
+                            body: Data("{\"ok\":true}\n".utf8))
     }
 
     // ---------- auth ----------
@@ -274,10 +319,5 @@ final class HTTPServer {
         var data = Data(head.utf8)
         data.append(body)
         return data
-    }
-
-    private func redirect() -> Data {
-        let head = "HTTP/1.1 303 See Other\r\nLocation: /\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        return Data(head.utf8)
     }
 }

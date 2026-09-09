@@ -1,1 +1,5 @@
-Initial release.
+Unlock a locked Mac. When your Mac's screen is locked, Nodlock now says so, and the Unlock button types your Mac login password at the lock screen. After that, the security prompt is a tap away, as before.
+
+Also new: the status chip shows "mac locked", and taps on the screenshot are held back until the Mac is unlocked.
+
+Mac actions. When your Mac companion exposes quick actions, they now show up as buttons under the prompt card. Tap one, confirm, and the Mac runs it.

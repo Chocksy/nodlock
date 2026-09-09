@@ -7,7 +7,7 @@ VERSION="${1:?usage: release-mac.sh <version>}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$HOME/.config/op-guard/build.env" ] && . "$HOME/.config/op-guard/build.env"
 APP_NAME="Nodlock"
-cd "$MAC" && ./build-app.sh
+cd "$ROOT/NodlockMac" && VERSION="$VERSION" ./build-app.sh
 APP=$(ls -d *.app | head -1)
 OUT="/tmp/${APP_NAME}-release"; rm -rf "$OUT"; mkdir -p "$OUT"; cp -R "$APP" "$OUT/${APP_NAME}.app"
 cd "$OUT"

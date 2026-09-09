@@ -10,6 +10,8 @@ WHAT IT DOES
 • Pushes a notification to your phone the moment a prompt appears
 • Shows you a live screenshot so you know exactly what you are approving
 • Types the password into the dialog, with Return, Escape and Tab on hand
+• Unlocks a locked Mac: type your Mac login password and Nodlock enters it at the lock screen
+• Shows quick actions your Mac companion exposes, so you can trigger them from the same screen
 • Tap anywhere on the screenshot to click that spot on the Mac
 • Forwards CLI login links (device codes, OAuth, SSO) to your phone so you can finish sign-ins there
 • Keeps a "Recent logins" list of forwarded links
@@ -27,7 +29,7 @@ PRIVATE BY DESIGN
 • No analytics, no tracking, no third-party SDKs.
 
 HOW THE CONNECTION WORKS
-The Mac companion listens only on localhost. You decide how your phone reaches it: a Cloudflare Tunnel protected by Cloudflare Access for access from anywhere, a VPN, or your home network. The Mac shows a QR code; you scan it once and you are paired.
+The Mac companion listens only on localhost. You decide how your phone reaches it: over your home network, or through a secure connection of your own for access from anywhere. The Mac shows a QR code; you scan it once and you are paired.
 
 SETUP IN BRIEF
 1. Install the companion on your Mac (link on the support page) and grant it Screen Recording and Accessibility.
