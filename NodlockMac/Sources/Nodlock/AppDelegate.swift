@@ -67,75 +67,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let state = AppState.shared
-        let cfg = Config.shared
         let d = state.dialog
 
-        // Status line.
-        let statusTitle = d != nil ? "PROMPT ACTIVE: \(d!.owner)" : "Watching for prompts"
-        let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-        if d != nil {
+        // Status line: prompt owner, or "Watching" plus uptime and pushes in grey.
+        let statusItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        if let d = d {
             statusItem.attributedTitle = NSAttributedString(
-                string: statusTitle,
+                string: "PROMPT ACTIVE: \(d.owner)",
                 attributes: [.foregroundColor: NSColor.systemRed,
                              .font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
+        } else {
+            let mins = state.uptime / 60
+            let up = mins < 60 ? "\(mins)m" : "\(mins / 60)h \(mins % 60)m"
+            let pushes = state.pushes == 1 ? "1 push" : "\(state.pushes) pushes"
+            statusItem.attributedTitle = titled("Watching for prompts", secondary: "\(up) · \(pushes)")
         }
         statusItem.isEnabled = false
         menu.addItem(statusItem)
-
-        let mins = state.uptime / 60
-        menu.addItem(disabled("Uptime: \(mins)m (\(state.uptime)s)"))
-        menu.addItem(disabled("Pushes: \(state.pushes)"))
         menu.addItem(healthItem())
 
+        // Network: works like the Wi-Fi menu. Check = active, click = switch.
         menu.addItem(.separator())
-
-        // Tailscale / WARP state.
+        menu.addItem(.sectionHeader(title: "Network"))
         let (tsUp, tsIP) = tailscaleState()
-        let tsLine = tsUp ? "Tailscale: up\(tsIP.isEmpty ? "" : " (\(tsIP))")" : "Tailscale: down"
-        menu.addItem(disabled(tsLine))
-        menu.addItem(disabled("WARP: \(warpState())"))
+        let ts = NSMenuItem(title: "Tailscale", action: #selector(switchTailscale), keyEquivalent: "")
+        ts.target = self
+        ts.state = tsUp ? .on : .off
+        if !tsIP.isEmpty { ts.attributedTitle = titled("Tailscale", secondary: tsIP) }
+        menu.addItem(ts)
+        let warp = NSMenuItem(title: "WARP", action: #selector(switchWARP), keyEquivalent: "")
+        warp.target = self
+        warp.state = warpState() == "connected" ? .on : .off
+        menu.addItem(warp)
 
-        let toTS = NSMenuItem(title: "Switch to Tailscale", action: #selector(switchTailscale), keyEquivalent: "")
-        toTS.target = self
-        menu.addItem(toTS)
-        let toWARP = NSMenuItem(title: "Switch to WARP", action: #selector(switchWARP), keyEquivalent: "")
-        toWARP.target = self
-        menu.addItem(toWARP)
-
-        menu.addItem(.separator())
-
-        // Permission grants with live check state.
-        let screenOK = CGPreflightScreenCaptureAccess()
-        let grantScreen = NSMenuItem(title: "Grant Screen Recording…", action: #selector(grantScreenRecording), keyEquivalent: "")
-        grantScreen.target = self
-        grantScreen.state = screenOK ? .on : .off
-        menu.addItem(grantScreen)
-
-        let axOK = AXIsProcessTrusted()
-        let grantAX = NSMenuItem(title: "Grant Accessibility…", action: #selector(grantAccessibility), keyEquivalent: "")
-        grantAX.target = self
-        grantAX.state = axOK ? .on : .off
-        menu.addItem(grantAX)
+        // Permission rows only while one is missing.
+        var grants: [NSMenuItem] = []
+        if !CGPreflightScreenCaptureAccess() {
+            grants.append(warning("⚠ Grant Screen Recording…", #selector(grantScreenRecording)))
+        }
+        if !AXIsProcessTrusted() {
+            grants.append(warning("⚠ Grant Accessibility…", #selector(grantAccessibility)))
+        }
+        if !grants.isEmpty {
+            menu.addItem(.separator())
+            for g in grants { menu.addItem(g) }
+        }
 
         menu.addItem(.separator())
+        for (t, sel) in [("Open panel", #selector(openPanel)), ("Pair phone…", #selector(showPairingQR)),
+                         ("Setup…", #selector(openOnboarding))] {
+            let mi = NSMenuItem(title: t, action: sel, keyEquivalent: "")
+            mi.target = self
+            menu.addItem(mi)
+        }
 
-        let openPanel = NSMenuItem(title: "Open panel", action: #selector(openPanel), keyEquivalent: "")
-        openPanel.target = self
-        menu.addItem(openPanel)
-
-        let showQR = NSMenuItem(title: "Show Pairing QR…", action: #selector(showPairingQR), keyEquivalent: "")
-        showQR.target = self
-        menu.addItem(showQR)
-
-        let setup = NSMenuItem(title: "Setup…", action: #selector(openOnboarding), keyEquivalent: "")
-        setup.target = self
-        menu.addItem(setup)
-
-        let copyTopic = NSMenuItem(title: "Copy ntfy topic", action: #selector(copyTopic), keyEquivalent: "")
-        copyTopic.target = self
-        copyTopic.isEnabled = !cfg.topic.isEmpty
-        menu.addItem(copyTopic)
-
+        menu.addItem(.separator())
         let restart = NSMenuItem(title: "Restart", action: #selector(restart), keyEquivalent: "")
         restart.target = self
         menu.addItem(restart)
@@ -145,7 +131,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(quit)
     }
 
+    // "Title" plus grey secondary text, for menu rows.
+    private func titled(_ title: String, secondary: String, dot: NSColor? = nil) -> NSAttributedString {
+        let s = NSMutableAttributedString()
+        if let dot = dot { s.append(NSAttributedString(string: "● ", attributes: [.foregroundColor: dot])) }
+        s.append(NSAttributedString(string: title, attributes: [.foregroundColor: NSColor.labelColor]))
+        s.append(NSAttributedString(string: "  \(secondary)",
+                                    attributes: [.foregroundColor: NSColor.secondaryLabelColor]))
+        return s
+    }
+
+    private func warning(_ title: String, _ action: Selector) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        mi.target = self
+        mi.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: NSColor.systemOrange])
+        return mi
+    }
+
     // ---------- health ----------
+
+    private static let isoParser = ISO8601DateFormatter()
 
     private func healthItem() -> NSMenuItem {
         let h = Health.shared
@@ -169,16 +174,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let e = h.lastError, !h.isOff { sub.addItem(disabled("Config error: \(e)")) }
         let colors: [String: NSColor] = ["ok": .systemGreen, "failing": .systemOrange,
                                          "down": .systemRed, "error": .systemGray]
-        for w in rows {
+        let rank = ["down": 0, "failing": 1, "error": 2, "ok": 3]
+        // Stable sort: problems first, config order inside each group.
+        let sorted = rows.enumerated().sorted {
+            (rank[$0.element["status"] as? String ?? ""] ?? 9, $0.offset)
+                < (rank[$1.element["status"] as? String ?? ""] ?? 9, $1.offset)
+        }.map(\.element)
+        let now = Date()
+        var sawProblem = false
+        var sawOK = false
+        for w in sorted {
             let name = w["name"] as? String ?? "?"
             let status = w["status"] as? String ?? "?"
-            let detail = status == "ok" ? "ok" : (w["last_error"] as? String ?? status)
-            let line = NSMutableAttributedString(string: "● ", attributes: [.foregroundColor: colors[status] ?? .systemGray])
-            line.append(NSAttributedString(string: "\(name): \(detail)"))
-            let wi = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-            wi.attributedTitle = line
+            let ok = status == "ok"
+            let err = ok ? "" : (w["last_error"] as? String ?? "")
+            let hint = w["hint"] as? String ?? ""
+            let age = (w["since"] as? String).flatMap { Self.isoParser.date(from: $0) }
+                .map { fmtDuration(now.timeIntervalSince($0)) } ?? ""
+            if ok && sawProblem && !sawOK { sub.addItem(.separator()) }
+            if ok { sawOK = true } else { sawProblem = true }
+
+            var detail = ok ? age : [status, age].filter { !$0.isEmpty }.joined(separator: " ")
+            if !err.isEmpty { detail += " · " + (err.count > 40 ? String(err.prefix(40)) + "…" : err) }
+            let wi = NSMenuItem(title: name, action: #selector(copyWatch(_:)), keyEquivalent: "")
+            wi.target = self
+            wi.attributedTitle = titled(name, secondary: detail, dot: colors[status] ?? .systemGray)
+            wi.representedObject = ["\(name): \(status)", err, hint].filter { !$0.isEmpty }.joined(separator: ". ")
             sub.addItem(wi)
-            if w["fix"] is String {
+            if !ok, w["fix"] is String {
                 let fi = NSMenuItem(title: "Fix \(name)", action: #selector(fixWatch(_:)), keyEquivalent: "")
                 fi.target = self
                 fi.representedObject = name
@@ -195,6 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         item.submenu = sub
         return item
+    }
+
+    @objc private func copyWatch(_ sender: NSMenuItem) {
+        guard let text = sender.representedObject as? String else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
     }
 
     @objc private func fixWatch(_ sender: NSMenuItem) {
@@ -319,7 +349,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         OnboardingWindowController.shared.show()
     }
 
-    @objc private func copyTopic() {
+    // Not private: onboarding's Pair phone step has a "Copy ntfy topic" button.
+    @objc func copyTopic() {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(Config.shared.topic, forType: .string)

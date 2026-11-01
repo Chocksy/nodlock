@@ -50,6 +50,17 @@ background:#fff;transition:transform .2s}.toggle.on::after{transform:translateX(
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;
 background:rgba(20,24,32,.95);border:1px solid var(--line);padding:10px 16px;border-radius:12px;
 transition:.25s;pointer-events:none}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.hhd{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}.hsum{margin-left:auto;font-size:13px;font-weight:600}
+.hp{border-radius:12px;padding:9px 10px;margin-top:8px;background:rgba(255,92,108,.08);border:1px solid rgba(255,92,108,.28)}
+.hp.w{background:rgba(255,176,32,.07);border-color:rgba(255,176,32,.28)}
+.hr{display:flex;align-items:center;gap:8px;font-size:14px;min-width:0}.hok{height:30px}
+.hn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ha{flex:none;color:var(--dim);font-size:12px}
+.hfix{flex:none;padding:6px 12px;font-size:13px;border-radius:10px}
+.he{font-size:13px;color:#ff9aa4;margin-top:4px;overflow-wrap:anywhere}.hp.w .he{color:#ffc76b}
+.hh{font-size:12px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hm{display:block;background:none;border:none;padding:8px 0 0;font:inherit;font-size:13px;color:var(--accent);cursor:pointer}
+.hm span{color:var(--dim)}
 </style></head><body><div class=wrap>
 <div class=top><div class=logo>N</div><h1>Nodlock</h1>
 <div class=chip><span class=dot id=dot></span><span id=stat>connecting</span></div></div>
@@ -67,7 +78,7 @@ transition:.25s;pointer-events:none}.toast.show{opacity:1;transform:translateX(-
 <button class="btn ghost" onclick=key('tab')>Tab</button></div>
 </div>
 <div class=card id=hc style="display:none;margin-top:14px">
-<div class=owner style="margin-bottom:4px">Health</div>
+<div class="owner hhd"><span>Health</span><span class=hsum id=hsum></span></div>
 <div id=hl></div>
 <div class=owner id=hs style="margin:10px 2px 0"></div>
 </div>
@@ -103,14 +114,26 @@ return s<60?Math.floor(s)+'s':s<3600?Math.floor(s/60)+'m':s<86400?Math.floor(s/3
 const hm=t=>t?new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'never';
 function fix(n){const w=HW.find(x=>x.name==n);if(!w||!w.fix)return;if(!confirm('Run the fix for '+w.name+'?\n\n'+w.fix))return;
 post('/health/fix','name='+encodeURIComponent(w.name)).then(r=>toast(r.ok?'Fix started':'Fix refused ('+r.status+')'))}
+let HO=localStorage.getItem('nl-health-open')=='1',HG='';
+function htoggle(){HO=!HO;localStorage.setItem('nl-health-open',HO?'1':'0');hrender()}
+const hdot=s=>'<span class=dot style="flex:none;background:'+HC[s]+';box-shadow:0 0 10px '+HC[s]+'"></span>';
+function hrender(){const bad=HW.filter(w=>w.status!='ok'),ok=HW.filter(w=>w.status=='ok');
+const n=k=>HW.filter(w=>w.status==k).length,sum=$('#hsum');
+if(!HW.length){sum.textContent='';$('#hl').innerHTML='<div class=hh style="margin-top:6px">checking...</div>';return}
+if(!bad.length){sum.textContent='All '+ok.length+' OK';sum.style.color='var(--ok)'}
+else{sum.textContent=[[n('down'),'down'],[n('failing'),'failing'],[n('error'),'error'],[ok.length,'OK']]
+.filter(x=>x[0]).map(x=>x[0]+' '+x[1]).join(' \u00b7 ');sum.style.color=n('down')||n('error')?'var(--danger)':'var(--warn)'}
+let o=bad.map(w=>'<div class="hp'+(w.status=='failing'?' w':'')+'"><div class=hr>'+hdot(w.status)
++'<b class=hn>'+esc(w.name)+'</b><span class=ha>'+esc(w.status+' '+age(w.since))+'</span>'
++(w.fix?'<button class="btn hfix" data-n="'+esc(w.name)+'" onclick="fix(this.dataset.n)">Fix</button>':'')+'</div>'
++(w.last_error?'<div class=he>'+esc(w.last_error)+'</div>':'')
++(w.hint?'<div class=hh>'+esc(w.hint)+'</div>':'')+'</div>').join('');
+if(ok.length){const lbl=HO?'Hide \u25b4':(bad.length?'Show '+ok.length+' OK \u25be':'Show list \u25be');
+o+='<button class=hm onclick=htoggle()>'+(bad.length?'':'<span>checked '+esc(HG?age(HG):'?')+' ago \u00b7 </span>')+lbl+'</button>';
+if(HO)o+=ok.map(w=>'<div class="hr hok">'+hdot('ok')+'<span class=hn>'+esc(w.name)+'</span><span class=ha>'+esc(age(w.since))+'</span></div>').join('')}
+$('#hl').innerHTML=o}
 async function htick(){try{const r=await fetch('/health');if(!r.ok){$('#hc').style.display='none';return}
-const h=await r.json();HW=h.watches;$('#hc').style.display='';
-$('#hl').innerHTML=HW.map(w=>'<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px">'
-+'<span class=dot style="flex:none;background:'+HC[w.status]+';box-shadow:0 0 10px '+HC[w.status]+'"></span>'
-+'<span style="flex:none">'+esc(w.name)+'</span>'
-+'<span style="flex:1;min-width:0;color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(w.status=='ok'?'':esc(w.last_error))+'</span>'
-+'<span style="flex:none;color:var(--dim);font-size:12px">'+age(w.since)+'</span>'
-+(w.fix?'<button class="btn ghost" style="flex:none;padding:6px 10px;font-size:13px" data-n="'+esc(w.name)+'" onclick="fix(this.dataset.n)">Fix</button>':'')+'</div>').join('');
+const h=await r.json();HW=h.watches||[];HG=h.generated_at||'';$('#hc').style.display='';hrender();
 const l=[];if(h.config_error)l.push('Config error: '+esc(h.config_error));
 if(h.server)l.push(h.server.error?'Outside check: '+esc(h.server.error):'Outside check: last OK '+hm(h.server.last_heartbeat_ok));
 (h.outside_checks||[]).filter(o=>o.status!='ok').forEach(o=>l.push(esc(o.name)+' from outside: '+esc(o.status)+(o.last_error?' ('+esc(o.last_error)+')':'')));

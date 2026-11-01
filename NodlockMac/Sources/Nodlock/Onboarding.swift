@@ -72,10 +72,19 @@ fileprivate final class OnboardingModel: ObservableObject {
     @Published var pushBusy = false
 
     // Status server step. Prefilled from the env file when already set up.
-    @Published var serverToken = Config.shared.serverToken
-    @Published var serverURL = Config.shared.serverURL.isEmpty ? "http://nodlock-server:8080" : Config.shared.serverURL
+    // Editing either field after a Test clears its result.
+    @Published var serverToken = Config.shared.serverToken {
+        didSet { if serverToken != oldValue { serverResult = "" } }
+    }
+    @Published var serverURL = Config.shared.serverURL.isEmpty ? "http://nodlock-server:8080" : Config.shared.serverURL {
+        didSet { if serverURL != oldValue { serverResult = "" } }
+    }
     @Published var serverResult = ""
     @Published var serverBusy = false
+    @Published var lastTestOK: Date?
+    // From Health while the Status server step is open.
+    @Published var heartbeatOK: Date?
+    @Published var heartbeatError: String?
 
     private var timer: Timer?
     private var checkingReachability = false
@@ -142,6 +151,7 @@ fileprivate final class OnboardingModel: ObservableObject {
         screenRecording = CGPreflightScreenCaptureAccess()
         accessibility = AXIsProcessTrusted()
         devicesPaired = DeviceStore.shared.liveCount()
+        if step == .server { readHeartbeat() }
 
         // Network check off the main thread; publish on main.
         guard !checkingReachability else { return }
@@ -236,13 +246,40 @@ fileprivate final class OnboardingModel: ObservableObject {
 
     // MARK: - Status server
 
+    // The server reuses this Mac's ntfy topic.
     var serverEnvBlock: String {
-        "NODLOCK_TOKEN=\(serverToken)\nTS_AUTHKEY=\nNTFY_TOPIC="
+        "NODLOCK_TOKEN=\(trimmedToken)\nTS_AUTHKEY=\nNTFY_TOPIC=\(Config.shared.topic)"
     }
 
+    var trimmedToken: String { serverToken.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var trimmedURL: String { serverURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var serverTestOK: Bool { serverResult == "Connected" }
+
+    // Config strips trailing slashes from OPG_SERVER_URL, so compare the same way.
+    var serverFieldsSaved: Bool {
+        var url = trimmedURL
+        while url.hasSuffix("/") { url.removeLast() }
+        return trimmedToken == Config.shared.serverToken && url == Config.shared.serverURL
+    }
+
+    // Newest good heartbeat: the running app's (within 3 min) or the last Test.
+    var lastGoodHeartbeat: Date? {
+        let live = heartbeatOK.flatMap { Date().timeIntervalSince($0) < 180 ? $0 : nil }
+        let test = serverTestOK ? lastTestOK : nil
+        return [live, test].compactMap { $0 }.max()
+    }
+
+    func readHeartbeat() {
+        let srv = Health.shared.snapshot()["server"] as? [String: Any]
+        heartbeatOK = (srv?["last_heartbeat_ok"] as? String).flatMap { OnboardingModel.isoParser.date(from: $0) }
+        heartbeatError = srv?["error"] as? String
+    }
+
+    private static let isoParser = ISO8601DateFormatter()
+
     func generateServerToken() {
-        serverToken = Config.randomHexToken(bytes: 16) // 32 hex chars
-        serverResult = ""
+        serverToken = Config.randomHexToken(bytes: 16) // 32 hex chars, clears serverResult
     }
 
     func copyServerEnv() {
@@ -254,12 +291,16 @@ fileprivate final class OnboardingModel: ObservableObject {
         guard !serverBusy else { return }
         serverBusy = true
         serverResult = "Testing…"
-        let (url, token) = (serverURL.trimmingCharacters(in: .whitespacesAndNewlines), serverToken.trimmingCharacters(in: .whitespacesAndNewlines))
+        let (url, token) = (trimmedURL, trimmedToken)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let (ok, err, _) = Health.shared.postHeartbeat(url: url, token: token)
             DispatchQueue.main.async {
-                self?.serverBusy = false
-                self?.serverResult = ok ? "Connected" : (err ?? "failed")
+                guard let self = self else { return }
+                self.serverBusy = false
+                // Fields edited while the test ran: the result is for old values.
+                guard self.trimmedURL == url && self.trimmedToken == token else { self.serverResult = ""; return }
+                self.serverResult = ok ? "Connected" : (err ?? "failed")
+                if ok { self.lastTestOK = Date() }
             }
         }
     }
@@ -267,8 +308,7 @@ fileprivate final class OnboardingModel: ObservableObject {
     // Writes OPG_SERVER_URL / OPG_SERVER_TOKEN, then restarts (Config loads once).
     func saveServer() {
         do {
-            try Config.writeEnv([("OPG_SERVER_URL", serverURL.trimmingCharacters(in: .whitespacesAndNewlines)),
-                                 ("OPG_SERVER_TOKEN", serverToken.trimmingCharacters(in: .whitespacesAndNewlines))])
+            try Config.writeEnv([("OPG_SERVER_URL", trimmedURL), ("OPG_SERVER_TOKEN", trimmedToken)])
         } catch {
             serverResult = "Could not write the env file: \(error.localizedDescription)"
             return
@@ -286,13 +326,14 @@ fileprivate final class OnboardingModel: ObservableObject {
 // MARK: - Reusable views
 
 private struct GhostButtonStyle: ButtonStyle {
+    var small = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: small ? 12 : 13, weight: .semibold))
             .foregroundColor(.sTxt)
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.08)))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sLine, lineWidth: 1))
+            .padding(.horizontal, small ? 10 : 14).padding(.vertical, small ? 4 : 8)
+            .background(RoundedRectangle(cornerRadius: small ? 8 : 10).fill(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: small ? 8 : 10).stroke(Color.sLine, lineWidth: 1))
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
 }
@@ -371,10 +412,11 @@ private struct StatusRow: View {
     }
 }
 
-private struct StepHeader: View {
+private struct StepHeader<Accessory: View>: View {
     let icon: String
     let title: String
     let subtitle: String
+    @ViewBuilder var accessory: () -> Accessory
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
@@ -388,9 +430,43 @@ private struct StepHeader: View {
                                                  startPoint: .topLeading, endPoint: .bottomTrailing)))
                     .shadow(color: Color.sAccent.opacity(0.4), radius: 8, y: 3)
                 Text(title).font(.system(size: 22, weight: .bold)).foregroundColor(.sTxt)
+                Spacer(minLength: 8)
+                accessory()
             }
             Text(subtitle).font(.system(size: 13)).foregroundColor(.sDim)
         }
+    }
+}
+
+extension StepHeader where Accessory == EmptyView {
+    init(icon: String, title: String, subtitle: String) {
+        self.init(icon: icon, title: title, subtitle: subtitle, accessory: { EmptyView() })
+    }
+}
+
+// Numbered checklist row: number in a circle, green check when done.
+private struct ChecklistRow<Content: View>: View {
+    let n: Int
+    let done: Bool
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle().fill(done ? Color.sOk : Color.clear)
+                if done {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: 0x05210f))
+                } else {
+                    Text("\(n)").font(.system(size: 11, weight: .semibold)).foregroundColor(.sAccent)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .overlay(Circle().stroke(done ? Color.sOk : Color.sAccent, lineWidth: 1))
+            VStack(alignment: .leading, spacing: 4) { content() }
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 7)
+        .overlay(Rectangle().fill(Color.white.opacity(0.07)).frame(height: 1), alignment: .top)
     }
 }
 
@@ -593,8 +669,15 @@ fileprivate struct OnboardingView: View {
                 }
                 Spacer(minLength: 0)
             }
-            Text("You can also use the browser panel — pairing is not required.")
-                .font(.system(size: 12)).foregroundColor(.sDim)
+            HStack(spacing: 10) {
+                Text("You can also use the browser panel. Pairing is not required.")
+                    .font(.system(size: 12)).foregroundColor(.sDim)
+                Spacer(minLength: 8)
+                if !Config.shared.topic.isEmpty {
+                    Button("Copy ntfy topic") { (NSApp.delegate as? AppDelegate)?.copyTopic() }
+                        .buttonStyle(GhostButtonStyle(small: true))
+                }
+            }
         }
     }
 
@@ -626,55 +709,93 @@ fileprivate struct OnboardingView: View {
 
     // MARK: Step 5 — Status server (optional)
     private var serverStep: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             StepHeader(icon: Step.server.icon, title: "Status server",
-                       subtitle: "Optional. A small Docker box on your tailnet checks your sites from outside and alerts when this Mac goes silent.")
-            HStack(spacing: 10) {
-                // Paste the server's NODLOCK_TOKEN, or generate one and copy it to the server.
-                TextField("Token", text: $model.serverToken)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(width: 300)
-                Button("Generate token") { model.generateServerToken() }.buttonStyle(GhostButtonStyle())
+                       subtitle: "Optional. Checks your sites from another machine and tells you when this Mac goes silent.") {
+                serverPill
             }
-            if !model.serverToken.isEmpty {
-                HStack(alignment: .top, spacing: 10) {
-                    Text(model.serverEnvBlock)
-                        .font(.system(size: 12, design: .monospaced)).foregroundColor(.sTxt)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.sCard))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sLine, lineWidth: 1))
-                    Button("Copy") { model.copyServerEnv() }.buttonStyle(GhostButtonStyle())
+            VStack(alignment: .leading, spacing: 0) {
+                ChecklistRow(n: 1, done: model.lastGoodHeartbeat != nil) {
+                    stepTitle("Tag and rules in Tailscale", link: "Open ↗",
+                              url: "https://login.tailscale.com/admin/acls")
+                    stepHint("tag:nodlock may reach this Mac on 443; you may reach the tag on 8080. Skip if your policy allows all.")
                 }
-                HStack(spacing: 16) {
-                    Link("Tailscale auth keys", destination: URL(string: "https://login.tailscale.com/admin/settings/keys")!)
-                    Link("Server setup guide", destination: URL(string: "https://github.com/Chocksy/nodlock/blob/main/server/README.md")!)
+                ChecklistRow(n: 2, done: model.lastGoodHeartbeat != nil) {
+                    stepTitle("Reusable auth key with tag:nodlock", link: "Open ↗",
+                              url: "https://login.tailscale.com/admin/settings/keys")
                 }
-                .font(.system(size: 12))
+                ChecklistRow(n: 3, done: !model.trimmedToken.isEmpty) {
+                    stepTitle("Shared token")
+                    HStack(spacing: 8) {
+                        TextField("Token", text: $model.serverToken)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                        Button("Generate") { model.generateServerToken() }
+                            .buttonStyle(GhostButtonStyle(small: true))
+                        Button("Copy server env") { model.copyServerEnv() }
+                            .buttonStyle(GhostButtonStyle(small: true))
+                            .disabled(model.trimmedToken.isEmpty)
+                    }
+                }
+                ChecklistRow(n: 4, done: model.lastGoodHeartbeat != nil) {
+                    stepTitle("Deploy server/compose.yaml", link: "Guide ↗",
+                              url: "https://github.com/Chocksy/nodlock/blob/main/server/README.md")
+                    stepHint("Paste the env from step 3. Your ntfy topic is already in it.")
+                }
+                ChecklistRow(n: 5, done: model.serverTestOK) {
+                    stepTitle("Address")
+                    HStack(spacing: 8) {
+                        TextField("Server address", text: $model.serverURL)
+                            .textFieldStyle(.roundedBorder)
+                        Button(model.serverBusy ? "Testing…" : "Test") { model.testServer() }
+                            .buttonStyle(GhostButtonStyle(small: true))
+                            .disabled(model.serverBusy || model.trimmedToken.isEmpty)
+                    }
+                    if !model.serverResult.isEmpty && !model.serverTestOK {
+                        stepHint(model.serverResult, color: .sWarn)
+                    }
+                }
             }
-            HStack(spacing: 10) {
-                TextField("Server address", text: $model.serverURL)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 260)
-                Button(model.serverBusy ? "Testing…" : "Test") { model.testServer() }
-                    .buttonStyle(GhostButtonStyle())
-                    .disabled(model.serverBusy || model.serverToken.isEmpty)
-                Button("Save") { model.saveServer() }
-                    .buttonStyle(GhostButtonStyle())
-                    .disabled(model.serverToken.isEmpty || model.serverURL.isEmpty)
-            }
-            if !model.serverResult.isEmpty {
-                Text(model.serverResult)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(model.serverResult == "Connected" ? .sOk : .sWarn)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Text("Save writes OPG_SERVER_URL and OPG_SERVER_TOKEN to ~/.config/op-guard/env and restarts Nodlock.")
-                .font(.system(size: 12)).foregroundColor(.sDim)
+            Text("Saving writes OPG_SERVER_URL and OPG_SERVER_TOKEN to ~/.config/op-guard/env and restarts Nodlock.")
+                .font(.system(size: 11)).foregroundColor(.sDim)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .onAppear { model.readHeartbeat() }
+    }
+
+    // Re-rendered by the model's 1.5 s refresh, which also re-reads Health.
+    private var serverPill: some View {
+        let good = model.lastGoodHeartbeat
+        var text = "Not connected"
+        if let good = good {
+            text = "Connected · heartbeat \(fmtDuration(Date().timeIntervalSince(good))) ago"
+        } else if let e = model.heartbeatError {
+            text += " · \(e)"
+        }
+        let color: Color = good != nil ? .sOk : .sWarn
+        return HStack(spacing: 6) {
+            Circle().fill(color).frame(width: 6, height: 6)
+            Text(text).lineLimit(1).truncationMode(.tail)
+        }
+        .font(.system(size: 11.5, weight: .medium))
+        .foregroundColor(color)
+        .padding(.horizontal, 9).padding(.vertical, 3)
+        .background(Capsule().fill(color.opacity(0.12)))
+        .frame(maxWidth: 260, alignment: .trailing)
+    }
+
+    private func stepTitle(_ title: String, link: String? = nil, url: String? = nil) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 13, weight: .semibold)).foregroundColor(.sTxt)
+            if let link = link, let url = url.flatMap(URL.init(string:)) {
+                Link(link, destination: url).font(.system(size: 12))
+            }
+        }
+    }
+
+    private func stepHint(_ text: String, color: Color = Color(hex: 0x7d8794)) -> some View {
+        Text(text).font(.system(size: 11.5)).foregroundColor(color)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Step 6 — Done
@@ -723,7 +844,15 @@ fileprivate struct OnboardingView: View {
                 Button("Get Started") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
             case .done:
                 Button("Finish") { onFinish() }.buttonStyle(PrimaryButtonStyle())
-            case .pairing, .server:
+            case .server:
+                if model.serverTestOK && !model.serverFieldsSaved {
+                    Button("Save and finish") { model.saveServer() }.buttonStyle(PrimaryButtonStyle())
+                } else if model.serverFieldsSaved && model.lastGoodHeartbeat != nil {
+                    Button("Next") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
+                } else {
+                    Button("Skip") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
+                }
+            case .pairing:
                 Button("Skip") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
             default:
                 Button("Next") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
