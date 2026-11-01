@@ -9,6 +9,7 @@ import html
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -480,6 +481,24 @@ class Handler(BaseHTTPRequestHandler):
         self.json(200, self.server.app.heartbeat(body))
 
 
+def iface_up(name="tailscale0"):
+    return any(n == name for _, n in socket.if_nameindex())
+
+
+def net_guard(up=iface_up, sleep=time.sleep, exit=os._exit, every=10):
+    """Exit once the tailnet interface vanishes after it was seen. The checker shares the
+    tailscale container's network namespace; when that container restarts, the checker is
+    left in a dead namespace and must restart to join the new one (restart policy does it)."""
+    seen = False
+    while True:
+        if up():
+            seen = True
+        elif seen:
+            log("tailnet interface gone (tailscale container restarted?); exiting to rejoin")
+            return exit(1)
+        sleep(every)
+
+
 def serve(app, port):
     srv = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     srv.app = app
@@ -492,6 +511,7 @@ def main():
     app = App(cfg)
     app.save()  # fail at start, not on the first heartbeat, if /data is not writable
     threading.Thread(target=app.loop, daemon=True).start()
+    threading.Thread(target=net_guard, daemon=True).start()
     log(f"listening on :{cfg.port}, checks every {cfg.interval}s, silence after "
         f"{cfg.silence // 60} min, alerts via {'Apple push + ' if cfg.apns else ''}"
         f"{'ntfy' if cfg.ntfy_topic else 'no ntfy'}")

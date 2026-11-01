@@ -298,6 +298,13 @@ class TestSignature(unittest.TestCase):
         self.assertIn(b"Verified OK", out.stdout)
 
 
+class TestNetGuard(unittest.TestCase):
+    def test_waits_for_iface_then_exits_when_gone(self):
+        states, codes = iter([False, False, True, True, False]), []
+        app.net_guard(up=lambda: next(states), sleep=lambda s: None, exit=codes.append)
+        self.assertEqual(codes, [1])
+
+
 class TestCheckUrl(unittest.TestCase):
     def test_redirect_not_followed_and_expect(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
