@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // Start subsystems.
         startWatcher()
+        Health.shared.start()
         server = HTTPServer(host: cfg.bind, port: cfg.port)
         do {
             try server.start()
@@ -84,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let mins = state.uptime / 60
         menu.addItem(disabled("Uptime: \(mins)m (\(state.uptime)s)"))
         menu.addItem(disabled("Pushes: \(state.pushes)"))
+        menu.addItem(healthItem())
 
         menu.addItem(.separator())
 
@@ -141,6 +143,98 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
+    }
+
+    // ---------- health ----------
+
+    private func healthItem() -> NSMenuItem {
+        let h = Health.shared
+        let snap = h.snapshot()
+        let rows = snap["watches"] as? [[String: Any]] ?? []
+        let s = snap["summary"] as? [String: Int] ?? [:]
+        var title: String
+        if h.isOff {
+            title = "Health: no watches.json"
+        } else {
+            let bad = ["down", "failing", "error"].compactMap { k in (s[k] ?? 0) > 0 ? "\(s[k]!) \(k)" : nil }
+            if rows.isEmpty {
+                title = h.lastError != nil ? "Health: config error" : "Health: checking…"
+            } else {
+                title = bad.isEmpty ? "Health: all OK (\(rows.count))" : "Health: " + bad.joined(separator: ", ")
+                if h.lastError != nil { title += " (config error)" }
+            }
+        }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        if let e = h.lastError, !h.isOff { sub.addItem(disabled("Config error: \(e)")) }
+        let colors: [String: NSColor] = ["ok": .systemGreen, "failing": .systemOrange,
+                                         "down": .systemRed, "error": .systemGray]
+        for w in rows {
+            let name = w["name"] as? String ?? "?"
+            let status = w["status"] as? String ?? "?"
+            let detail = status == "ok" ? "ok" : (w["last_error"] as? String ?? status)
+            let line = NSMutableAttributedString(string: "● ", attributes: [.foregroundColor: colors[status] ?? .systemGray])
+            line.append(NSAttributedString(string: "\(name): \(detail)"))
+            let wi = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            wi.attributedTitle = line
+            sub.addItem(wi)
+            if w["fix"] is String {
+                let fi = NSMenuItem(title: "Fix \(name)", action: #selector(fixWatch(_:)), keyEquivalent: "")
+                fi.target = self
+                fi.representedObject = name
+                fi.indentationLevel = 1
+                sub.addItem(fi)
+            }
+        }
+        sub.addItem(.separator())
+        for (t, sel) in [("Open health.json", #selector(openHealthJSON)), ("Edit watches.json", #selector(editWatches)),
+                         ("Copy health summary", #selector(copyHealth))] {
+            let mi = NSMenuItem(title: t, action: sel, keyEquivalent: "")
+            mi.target = self
+            sub.addItem(mi)
+        }
+        item.submenu = sub
+        return item
+    }
+
+    @objc private func fixWatch(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let fix = Health.shared.watches.first(where: { $0.name == name })?.fix else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Run the fix for \(name)?"
+        alert.informativeText = fix
+        alert.addButton(withTitle: "Run")
+        alert.addButton(withTitle: "Cancel")
+        alert.alertStyle = .warning
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        switch Health.shared.startFix(name: name) {
+        case .busy: notice("A fix is already running.")
+        case .started, .unknown, .noFix: break
+        }
+    }
+
+    @objc private func openHealthJSON() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: Health.shared.statePath))
+    }
+
+    @objc private func editWatches() {
+        let path = Health.shared.configPath
+        guard FileManager.default.fileExists(atPath: path) else {
+            notice("No watches.json yet. Create \(path) (see docs/HEALTH.md).")
+            return
+        }
+        // -t = the default text editor, not whatever app owns .json.
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        proc.arguments = ["-t", path]
+        try? proc.run()
+    }
+
+    @objc private func copyHealth() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(Health.shared.summaryText(), forType: .string)
     }
 
     private func disabled(_ title: String) -> NSMenuItem {
@@ -231,7 +325,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pb.setString(Config.shared.topic, forType: .string)
     }
 
-    @objc private func restart() {
+    // Not private: onboarding's "Status server" Save restarts through here.
+    @objc func restart() {
         let url = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
         let proc = Process()
         proc.executableURL = url

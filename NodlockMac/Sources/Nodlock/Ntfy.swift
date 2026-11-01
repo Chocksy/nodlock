@@ -42,3 +42,32 @@ func notify(dialog: Dialog, png: Data) {
     task.resume()
     sem.wait()
 }
+
+// Text-only push for health transitions. Same server/topic/token as above.
+func notifyText(title: String, body: String) {
+    let cfg = Config.shared
+    guard !cfg.topic.isEmpty, let url = URL(string: "\(cfg.ntfy)/\(cfg.topic)") else { return }
+    var req = URLRequest(url: url)
+    req.httpMethod = "PUT"
+    if !cfg.ntfyToken.isEmpty {
+        req.setValue("Bearer \(cfg.ntfyToken)", forHTTPHeaderField: "Authorization")
+    }
+    req.setValue(title.replacingOccurrences(of: "\n", with: " "), forHTTPHeaderField: "Title")
+    req.setValue("warning", forHTTPHeaderField: "Tags")
+    if !cfg.panelURL.isEmpty {
+        req.setValue("view, Open panel, \(cfg.panelURL), clear=true", forHTTPHeaderField: "Actions")
+    }
+    req.httpBody = Data((body.isEmpty ? title : body).utf8)
+    req.timeoutInterval = 10
+
+    let sem = DispatchSemaphore(value: 0)
+    let task = URLSession.shared.dataTask(with: req) { _, _, error in
+        if let error = error {
+            FileHandle.standardError.write(Data("nodlock: ntfy push failed: \(error)\n".utf8))
+        }
+        sem.signal()
+    }
+    task.resume()
+    // timeoutInterval is an idle timeout; a trickling reply needs a hard deadline too.
+    if sem.wait(timeout: .now() + 15) == .timedOut { task.cancel() }
+}

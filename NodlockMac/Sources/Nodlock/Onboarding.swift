@@ -28,7 +28,7 @@ private extension Color {
 // MARK: - Steps
 
 private enum Step: Int, CaseIterable {
-    case welcome, permissions, reachability, pairing, done
+    case welcome, permissions, reachability, pairing, server, done
 
     var title: String {
         switch self {
@@ -36,6 +36,7 @@ private enum Step: Int, CaseIterable {
         case .permissions: return "Permissions"
         case .reachability: return "Reachability"
         case .pairing: return "Pair phone"
+        case .server: return "Status server"
         case .done: return "Done"
         }
     }
@@ -46,26 +47,15 @@ private enum Step: Int, CaseIterable {
         case .permissions: return "lock.shield"
         case .reachability: return "antenna.radiowaves.left.and.right"
         case .pairing: return "qrcode"
+        case .server: return "server.rack"
         case .done: return "checkmark.seal"
         }
     }
 }
 
-// MARK: - Redirect-free URLSession delegate
-//
+// Redirect-free URLSession delegate: NoRedirectDelegate lives in Health.swift.
 // Cloudflare Access answers an unauthenticated request with a 302 to the login
-// page. Following that redirect would hide the real status code, so we stop at
-// the first response and judge the code ourselves.
-private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
-    static let shared = NoRedirectDelegate()
-
-    func urlSession(_ session: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest,
-                    completionHandler: @escaping (URLRequest?) -> Void) {
-        completionHandler(nil)
-    }
-}
+// page, so we stop at the first response and judge the code ourselves.
 
 // MARK: - Live state model
 
@@ -80,6 +70,12 @@ fileprivate final class OnboardingModel: ObservableObject {
 
     @Published var pushResult = ""
     @Published var pushBusy = false
+
+    // Status server step. Prefilled from the env file when already set up.
+    @Published var serverToken = Config.shared.serverToken
+    @Published var serverURL = Config.shared.serverURL.isEmpty ? "http://nodlock-server:8080" : Config.shared.serverURL
+    @Published var serverResult = ""
+    @Published var serverBusy = false
 
     private var timer: Timer?
     private var checkingReachability = false
@@ -118,6 +114,7 @@ fileprivate final class OnboardingModel: ObservableObject {
         case .permissions: return screenRecording && accessibility
         case .reachability: return panelReachable
         case .pairing: return devicesPaired > 0
+        case .server: return !Config.shared.serverURL.isEmpty
         case .done: return allGreen
         }
     }
@@ -235,6 +232,48 @@ fileprivate final class OnboardingModel: ObservableObject {
                 self?.pushResult = "Sent to \(count) device(s)"
             }
         }
+    }
+
+    // MARK: - Status server
+
+    var serverEnvBlock: String {
+        "NODLOCK_TOKEN=\(serverToken)\nTS_AUTHKEY=\nNTFY_TOPIC="
+    }
+
+    func generateServerToken() {
+        serverToken = Config.randomHexToken(bytes: 16) // 32 hex chars
+        serverResult = ""
+    }
+
+    func copyServerEnv() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(serverEnvBlock, forType: .string)
+    }
+
+    func testServer() {
+        guard !serverBusy else { return }
+        serverBusy = true
+        serverResult = "Testing…"
+        let (url, token) = (serverURL.trimmingCharacters(in: .whitespacesAndNewlines), serverToken.trimmingCharacters(in: .whitespacesAndNewlines))
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let (ok, err, _) = Health.shared.postHeartbeat(url: url, token: token)
+            DispatchQueue.main.async {
+                self?.serverBusy = false
+                self?.serverResult = ok ? "Connected" : (err ?? "failed")
+            }
+        }
+    }
+
+    // Writes OPG_SERVER_URL / OPG_SERVER_TOKEN, then restarts (Config loads once).
+    func saveServer() {
+        do {
+            try Config.writeEnv([("OPG_SERVER_URL", serverURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+                                 ("OPG_SERVER_TOKEN", serverToken.trimmingCharacters(in: .whitespacesAndNewlines))])
+        } catch {
+            serverResult = "Could not write the env file: \(error.localizedDescription)"
+            return
+        }
+        (NSApp.delegate as? AppDelegate)?.restart()
     }
 
     static func openSettings(_ tail: String) {
@@ -464,6 +503,7 @@ fileprivate struct OnboardingView: View {
         case .permissions: permissionsStep
         case .reachability: reachabilityStep
         case .pairing: pairingStep
+        case .server: serverStep
         case .done: doneStep
         }
     }
@@ -584,7 +624,60 @@ fileprivate struct OnboardingView: View {
         }
     }
 
-    // MARK: Step 5 — Done
+    // MARK: Step 5 — Status server (optional)
+    private var serverStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            StepHeader(icon: Step.server.icon, title: "Status server",
+                       subtitle: "Optional. A small Docker box on your tailnet checks your sites from outside and alerts when this Mac goes silent.")
+            HStack(spacing: 10) {
+                // Paste the server's NODLOCK_TOKEN, or generate one and copy it to the server.
+                TextField("Token", text: $model.serverToken)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(width: 300)
+                Button("Generate token") { model.generateServerToken() }.buttonStyle(GhostButtonStyle())
+            }
+            if !model.serverToken.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    Text(model.serverEnvBlock)
+                        .font(.system(size: 12, design: .monospaced)).foregroundColor(.sTxt)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.sCard))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.sLine, lineWidth: 1))
+                    Button("Copy") { model.copyServerEnv() }.buttonStyle(GhostButtonStyle())
+                }
+                HStack(spacing: 16) {
+                    Link("Tailscale auth keys", destination: URL(string: "https://login.tailscale.com/admin/settings/keys")!)
+                    Link("Server setup guide", destination: URL(string: "https://github.com/Chocksy/nodlock/blob/main/server/README.md")!)
+                }
+                .font(.system(size: 12))
+            }
+            HStack(spacing: 10) {
+                TextField("Server address", text: $model.serverURL)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                Button(model.serverBusy ? "Testing…" : "Test") { model.testServer() }
+                    .buttonStyle(GhostButtonStyle())
+                    .disabled(model.serverBusy || model.serverToken.isEmpty)
+                Button("Save") { model.saveServer() }
+                    .buttonStyle(GhostButtonStyle())
+                    .disabled(model.serverToken.isEmpty || model.serverURL.isEmpty)
+            }
+            if !model.serverResult.isEmpty {
+                Text(model.serverResult)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(model.serverResult == "Connected" ? .sOk : .sWarn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Save writes OPG_SERVER_URL and OPG_SERVER_TOKEN to ~/.config/op-guard/env and restarts Nodlock.")
+                .font(.system(size: 12)).foregroundColor(.sDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Step 6 — Done
     private var doneStep: some View {
         VStack(alignment: .leading, spacing: 16) {
             StepHeader(icon: Step.done.icon, title: model.allGreen ? "You're all set" : "Almost there",
@@ -630,7 +723,7 @@ fileprivate struct OnboardingView: View {
                 Button("Get Started") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
             case .done:
                 Button("Finish") { onFinish() }.buttonStyle(PrimaryButtonStyle())
-            case .pairing:
+            case .pairing, .server:
                 Button("Skip") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())
             default:
                 Button("Next") { goTo(offset: 1) }.buttonStyle(PrimaryButtonStyle())

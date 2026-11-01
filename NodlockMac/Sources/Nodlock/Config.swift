@@ -27,6 +27,12 @@ final class Config {
     let cfClientId: String
     let cfClientSecret: String
 
+    // Optional self-hosted status server (heartbeat target). Empty = off.
+    let serverURL: String
+    let serverToken: String
+
+    static let envPath = ("~/.config/op-guard/env" as NSString).expandingTildeInPath
+
     private init() {
         var values = Config.readEnvFile()
         // Overlay real environment (takes precedence).
@@ -61,6 +67,11 @@ final class Config {
         let cf = Config.readServiceToken()
         cfClientId = cf.clientId
         cfClientSecret = cf.clientSecret
+
+        var srv = values["OPG_SERVER_URL"] ?? ""
+        while srv.hasSuffix("/") { srv.removeLast() }
+        serverURL = srv
+        serverToken = values["OPG_SERVER_TOKEN"] ?? ""
     }
 
     // QR/pairing payload: panelURL plus the Cloudflare Access service token when
@@ -90,8 +101,7 @@ final class Config {
 
     // Parse KEY=VALUE lines, `export ` prefix allowed, strip surrounding quotes.
     private static func readEnvFile() -> [String: String] {
-        let path = ("~/.config/op-guard/env" as NSString).expandingTildeInPath
-        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [:] }
+        guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else { return [:] }
         var out: [String: String] = [:]
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
             var line = rawLine.trimmingCharacters(in: .whitespaces)
@@ -147,7 +157,44 @@ final class Config {
         return token
     }
 
-    private static func randomHexToken(bytes count: Int) -> String {
+    // Replace each KEY's line (`KEY=` or `export KEY=`) in place, append the
+    // ones not found, keep every other line untouched.
+    static func rewriteEnv(_ text: String, set pairs: [(String, String)]) -> String {
+        var lines = text.isEmpty ? [] : text.components(separatedBy: "\n")
+        if lines.last == "" { lines.removeLast() }
+        for (key, val) in pairs {
+            let newLine = "export \(key)=\(val)"
+            let idx = lines.firstIndex { raw in
+                var l = raw.trimmingCharacters(in: .whitespaces)
+                if l.hasPrefix("export ") { l = String(l.dropFirst("export ".count)) }
+                return l.hasPrefix(key + "=")
+            }
+            if let i = idx {
+                lines[i] = newLine
+                // Drop later duplicates: the reader keeps the LAST value, so a stale copy would win.
+                lines = lines.enumerated().filter { j, raw in
+                    guard j > i else { return true }
+                    var l = raw.trimmingCharacters(in: .whitespaces)
+                    if l.hasPrefix("export ") { l = String(l.dropFirst("export ".count)) }
+                    return !l.hasPrefix(key + "=")
+                }.map(\.element)
+            } else { lines.append(newLine) }
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    // Write keys into ~/.config/op-guard/env (0600). Takes effect after a restart.
+    static func writeEnv(_ pairs: [(String, String)]) throws {
+        let old = (try? String(contentsOfFile: envPath, encoding: .utf8)) ?? ""
+        try FileManager.default.createDirectory(
+            atPath: (envPath as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        guard FileManager.default.createFile(atPath: envPath, contents: Data(rewriteEnv(old, set: pairs).utf8),
+                                             attributes: [.posixPermissions: 0o600])
+        else { throw CocoaError(.fileWriteUnknown) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: envPath)
+    }
+
+    static func randomHexToken(bytes count: Int) -> String {
         var data = [UInt8](repeating: 0, count: count)
         let status = SecRandomCopyBytes(kSecRandomDefault, count, &data)
         if status != errSecSuccess {

@@ -9,6 +9,12 @@ let package = Package(
             name: "Nodlock",
             path: "Sources/Nodlock",
             swiftSettings: [.swiftLanguageMode(.v5)]
-        )
+        ),
+        .testTarget(
+            name: "NodlockTests",
+            dependencies: ["Nodlock"],
+            path: "Tests/NodlockTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

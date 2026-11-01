@@ -24,11 +24,52 @@ status() {
   echo "serve: $(tailscale serve status 2>/dev/null | head -1 || echo 'n/a')"
 }
 
+# Plain-text view of health.json (same text as the menu's "Copy health summary").
+health() {
+  local f="${NODLOCK_HEALTH:-$HOME/.local/state/nodlock/health.json}"
+  [ -f "$f" ] || { echo "no health.json at $f (is Nodlock running?)"; exit 1; }
+  if [ "${1:-}" = "--json" ]; then cat "$f"; return; fi
+  /usr/bin/python3 - "$f" <<'PY'
+import json, sys
+from datetime import datetime, timezone
+h = json.load(open(sys.argv[1]))
+def dur(s):
+    s = max(0, int(s))
+    if s < 60: return f"{s}s"
+    if s < 3600: return f"{s // 60}m"
+    if s < 86400: return f"{s // 3600}h {s // 60 % 60}m"
+    return f"{s // 86400}d {s // 3600 % 24}h"
+def age(t):
+    return dur((datetime.now(timezone.utc) - datetime.fromisoformat(t.replace("Z", "+00:00"))).total_seconds())
+err = h.get("config_error")
+if err == "no watches.json":
+    print(f"Health: no watches.json ({h.get('config_path', '')})"); sys.exit(0)
+s, gen = h.get("summary", {}), h.get("generated_at", "")
+print(f"Health: {s.get('down', 0)} down, {s.get('failing', 0)} failing, {s.get('error', 0)} error, "
+      f"{s.get('ok', 0)} ok (host {h.get('host', '?')}, {gen[11:19]})")
+if err: print(f"config error: {err}")
+for w in h.get("watches", []):
+    line = f"{w['status']:<8} {w['name']}"
+    if w["status"] != "ok" and w.get("last_error"): line += f"  {w['last_error']}"
+    if w.get("since"): line += f"  {age(w['since'])}"
+    if w.get("fix"): line += f"  fix: {w['fix']}"
+    print(line)
+srv = h.get("server")
+if srv:
+    print(f"server: error {srv['error']}" if srv.get("error") else f"server: last heartbeat OK {srv.get('last_heartbeat_ok') or 'never'}")
+for o in h.get("outside_checks", []):
+    print(f"outside: {o.get('name', '?')} {o.get('status', '?')}" + (f"  {o['last_error']}" if o.get("last_error") else ""))
+f = h.get("last_fix")
+if f: print(f"last fix: {f.get('name', '?')} exit {f.get('exit', -1)} at {f.get('at', '?')}")
+PY
+}
+
 case "${1:-status}" in
   status) status ;;
   start)  launchctl load -w "$PLIST" && echo "loaded" ;;
   stop)   launchctl unload -w "$PLIST" 2>/dev/null; lsof -tiTCP:$PORT -sTCP:LISTEN | xargs kill 2>/dev/null || true; echo "stopped" ;;
   restart) "$0" stop; sleep 1; "$0" start ;;
   logs)   tail -f "${TMPDIR:-/tmp}/nodlock.out" ;;
-  *) echo "usage: nodlockctl {status|start|stop|restart|logs}"; exit 1 ;;
+  health) health "${2:-}" ;;
+  *) echo "usage: nodlockctl {status|start|stop|restart|logs|health [--json]}"; exit 1 ;;
 esac

@@ -156,6 +156,19 @@ final class APNs {
         }
     }
 
+    // Text-only health push (watch down / recovered). No screenshot, no secrets.
+    func sendHealth(title: String, body: String) {
+        var alert: [String: Any] = ["title": title]
+        if !body.isEmpty { alert["body"] = body }
+        let payload: [String: Any] = [
+            "aps": ["alert": alert, "sound": "default", "interruption-level": "time-sensitive"],
+            "type": "health",
+        ]
+        for t in DeviceStore.shared.tokens() {
+            post(payload: payload, to: t)
+        }
+    }
+
     // Push a tappable "Login needed" URL to every registered device via APNs.
     // Never logs the full url or device token.
     func sendLoginURL(_ url: String, host: String) {

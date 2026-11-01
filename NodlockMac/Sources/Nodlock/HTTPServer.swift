@@ -134,6 +134,16 @@ final class HTTPServer {
             return httpResponse(status: "200 OK", contentType: "application/json", body: json)
         }
 
+        if path == "/health" {
+            // 404 when there is no watches.json, so the panel hides the card.
+            if Health.shared.isOff {
+                return httpResponse(status: "404 Not Found", contentType: "application/json",
+                                    body: Data("{\"ok\":false,\"error\":\"no watches.json\"}\n".utf8))
+            }
+            let json = (try? JSONSerialization.data(withJSONObject: Health.shared.snapshot())) ?? Data("{}".utf8)
+            return httpResponse(status: "200 OK", contentType: "application/json", body: json)
+        }
+
         if path.hasPrefix("/shot.png") {
             if let d = d, let png = capturePNG(windowID: d.id) {
                 return httpResponse(status: "200 OK", contentType: "image/png", body: png)
@@ -215,6 +225,16 @@ final class HTTPServer {
             }
             return httpResponse(status: "200 OK", contentType: "application/json",
                                 body: Data("{\"ok\":true}\n".utf8))
+        }
+        if path == "/health/fix" {
+            let (status, body): (String, String)
+            switch Health.shared.startFix(name: form["name"] ?? "") {
+            case .unknown: (status, body) = ("404 Not Found", "{\"ok\":false,\"error\":\"unknown watch\"}")
+            case .noFix: (status, body) = ("400 Bad Request", "{\"ok\":false,\"error\":\"no fix\"}")
+            case .busy: (status, body) = ("409 Conflict", "{\"ok\":false,\"error\":\"busy\"}")
+            case .started: (status, body) = ("200 OK", "{\"ok\":true}")
+            }
+            return httpResponse(status: status, contentType: "application/json", body: Data((body + "\n").utf8))
         }
 
         if path == "/click", let d = d {

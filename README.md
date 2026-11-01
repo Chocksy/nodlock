@@ -152,6 +152,26 @@ push-url --test          # prints which sample URLs would push
 Add your own patterns, one extended regex per line, in
 `~/.config/op-guard/push-url-filter`.
 
+## Health watches
+
+Nodlock can also watch the services you run on the Mac. List them in
+`~/.config/op-guard/watches.json` (URLs, ports, processes, launchd jobs, tmux
+windows, shell commands). Every 60 s it checks them, shows them in the menu and
+the panel, and pushes once when a watch goes down and once when it recovers.
+A watch can carry a `fix` command that the panel's Fix button runs. Only the
+command in your local file runs, and every run is logged.
+
+The state lands in `~/.local/state/nodlock/health.json`, so a coding agent can
+run `nodlockctl health` and know what broke. Field meanings, watch types and
+what to do per status: [docs/HEALTH.md](docs/HEALTH.md).
+
+## Status server (optional)
+
+A small Docker container that joins your tailnet, checks your URLs the way the
+phone sees them, and alerts when the Mac stops sending heartbeats. You host it
+yourself. Setup: [server/README.md](server/README.md), then menu bar >
+**Setup…** > **Status server** to paste the address and token.
+
 ## Security model
 
 - **The panel binds loopback.** `127.0.0.1:8377`. Nothing listens on a routable
@@ -189,7 +209,10 @@ install.sh          one-command installer (idempotent)
 push-url            $BROWSER shim: auth URLs to your phone
 NodlockMac/         the Mac menu-bar app (Swift 6, SwiftPM)
   build-app.sh      swift build + bundle assembly + codesign
-  Sources/Nodlock/  Watcher, Capture, Input, HTTPServer, Panel, APNs, Onboarding
+  Sources/Nodlock/  Watcher, Capture, Input, HTTPServer, Panel, APNs, Onboarding, Health
+  Tests/            swift test
+server/             optional status server (Docker, Python stdlib)
+docs/HEALTH.md      health watches reference
 NodlockiOS/         the native iOS client (SwiftUI, XcodeGen)
 ```
 

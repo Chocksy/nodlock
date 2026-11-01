@@ -50,6 +50,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<string>Nodlock screenshots the security prompt so you can act on it from your phone.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<!-- Health URL watches and the status server are user-configured plain-http hosts
+	     (e.g. http://site.test, http://host.tailnet.ts.net:8080); ATS would block them. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
 PLIST

@@ -66,6 +66,11 @@ transition:.25s;pointer-events:none}.toast.show{opacity:1;transform:translateX(-
 <button class="btn ghost" onclick=key('esc')>Esc</button>
 <button class="btn ghost" onclick=key('tab')>Tab</button></div>
 </div>
+<div class=card id=hc style="display:none;margin-top:14px">
+<div class=owner style="margin-bottom:4px">Health</div>
+<div id=hl></div>
+<div class=owner id=hs style="margin:10px 2px 0"></div>
+</div>
 <div class=foot id=foot>tailnet-only - nothing is stored</div></div>
 <div class=toast id=toast></div>
 <script>
@@ -91,5 +96,26 @@ else{$('#owner').textContent='No security prompt right now';
 $('#shot').style.display='none';$('#empty').style.display='';}
 }catch(e){$('#dot').classList.add('off');$('#stat').textContent='offline'}}
 tick();setInterval(tick,2000);
+let HW=[];const HC={ok:'var(--ok)',failing:'var(--warn)',down:'var(--danger)',error:'var(--dim)'};
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+function age(t){const s=Math.max(0,(Date.now()-Date.parse(t))/1000);
+return s<60?Math.floor(s)+'s':s<3600?Math.floor(s/60)+'m':s<86400?Math.floor(s/3600)+'h':Math.floor(s/86400)+'d'}
+const hm=t=>t?new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'never';
+function fix(n){const w=HW.find(x=>x.name==n);if(!w||!w.fix)return;if(!confirm('Run the fix for '+w.name+'?\n\n'+w.fix))return;
+post('/health/fix','name='+encodeURIComponent(w.name)).then(r=>toast(r.ok?'Fix started':'Fix refused ('+r.status+')'))}
+async function htick(){try{const r=await fetch('/health');if(!r.ok){$('#hc').style.display='none';return}
+const h=await r.json();HW=h.watches;$('#hc').style.display='';
+$('#hl').innerHTML=HW.map(w=>'<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:14px">'
++'<span class=dot style="flex:none;background:'+HC[w.status]+';box-shadow:0 0 10px '+HC[w.status]+'"></span>'
++'<span style="flex:none">'+esc(w.name)+'</span>'
++'<span style="flex:1;min-width:0;color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(w.status=='ok'?'':esc(w.last_error))+'</span>'
++'<span style="flex:none;color:var(--dim);font-size:12px">'+age(w.since)+'</span>'
++(w.fix?'<button class="btn ghost" style="flex:none;padding:6px 10px;font-size:13px" data-n="'+esc(w.name)+'" onclick="fix(this.dataset.n)">Fix</button>':'')+'</div>').join('');
+const l=[];if(h.config_error)l.push('Config error: '+esc(h.config_error));
+if(h.server)l.push(h.server.error?'Outside check: '+esc(h.server.error):'Outside check: last OK '+hm(h.server.last_heartbeat_ok));
+(h.outside_checks||[]).filter(o=>o.status!='ok').forEach(o=>l.push(esc(o.name)+' from outside: '+esc(o.status)+(o.last_error?' ('+esc(o.last_error)+')':'')));
+$('#hs').innerHTML=l.join('<br>');$('#hs').style.display=l.length?'':'none';
+}catch(e){}}
+htick();setInterval(htick,10000);
 </script></body></html>
 """#
