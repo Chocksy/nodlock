@@ -47,6 +47,9 @@ if err == "no watches.json":
 s, gen = h.get("summary", {}), h.get("generated_at", "")
 print(f"Health: {s.get('down', 0)} down, {s.get('failing', 0)} failing, {s.get('error', 0)} error, "
       f"{s.get('ok', 0)} ok (host {h.get('host', '?')}, {gen[11:19]})")
+if gen:
+    late = (datetime.now(timezone.utc) - datetime.fromisoformat(gen.replace("Z", "+00:00"))).total_seconds()
+    if late > 2 * h.get("interval_s", 60) + 30: print(f"STALE: last cycle {dur(late)} ago (is Nodlock running?)")
 if err: print(f"config error: {err}")
 for w in h.get("watches", []):
     line = f"{w['status']:<8} {w['name']}"
@@ -69,7 +72,7 @@ case "${1:-status}" in
   start)  launchctl load -w "$PLIST" && echo "loaded" ;;
   stop)   launchctl unload -w "$PLIST" 2>/dev/null; lsof -tiTCP:$PORT -sTCP:LISTEN | xargs kill 2>/dev/null || true; echo "stopped" ;;
   restart) "$0" stop; sleep 1; "$0" start ;;
-  logs)   tail -f "${TMPDIR:-/tmp}/nodlock.out" ;;
+  logs)   tail -f /tmp/nodlock.out ;;
   health) health "${2:-}" ;;
   *) echo "usage: nodlockctl {status|start|stop|restart|logs|health [--json]}"; exit 1 ;;
 esac

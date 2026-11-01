@@ -156,7 +156,7 @@ Add your own patterns, one extended regex per line, in
 
 Nodlock can also watch the services you run on the Mac. List them in
 `~/.config/op-guard/watches.json` (URLs, ports, processes, launchd jobs, tmux
-windows, shell commands). Every 60 s it checks them, shows them in the menu and
+windows, tailscale serve ports, shell commands). Every 60 s it checks them, shows them in the menu and
 the panel, and pushes once when a watch goes down and once when it recovers.
 A watch can carry a `fix` command that the panel's Fix button runs. Only the
 command in your local file runs, and every run is logged.

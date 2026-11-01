@@ -452,7 +452,10 @@ final class Health {
 
     func heartbeat() {
         let cfg = Config.shared
-        guard !cfg.serverURL.isEmpty, !cfg.serverToken.isEmpty else { return }
+        guard !cfg.serverURL.isEmpty else { return }
+        guard !cfg.serverToken.isEmpty else {
+            lock.lock(); serverError = "no OPG_SERVER_TOKEN"; lock.unlock(); return
+        }
         let (ok, err, results) = postHeartbeat(url: cfg.serverURL, token: cfg.serverToken)
         lock.lock(); defer { lock.unlock() }
         if ok {
