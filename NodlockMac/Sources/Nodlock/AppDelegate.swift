@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Menu bar item.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "lock.shield", accessibilityDescription: "Nodlock")
+            button.image = NSImage(systemSymbolName: "key.viewfinder", accessibilityDescription: "Nodlock")
             button.image?.isTemplate = true
             button.title = ""
         }
@@ -33,7 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             FileHandle.standardError.write(Data("nodlock: failed to bind \(cfg.bind):\(cfg.port): \(error)\n".utf8))
         }
 
-        // Reflect active-prompt state in the menu bar icon.
+        // Reflect prompt and health state in the menu bar icon.
         iconTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.refreshIcon()
         }
@@ -56,11 +56,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshIcon() {
         guard let button = statusItem.button else { return }
-        let active = AppState.shared.dialog != nil
-        let name = active ? "exclamationmark.shield.fill" : "lock.shield"
-        button.image = NSImage(systemSymbolName: name, accessibilityDescription: "Nodlock")
-        button.image?.isTemplate = !active
-        button.contentTintColor = active ? .systemRed : nil
+        // Red = a prompt waits, orange = a health watch is down, else the plain template glyph.
+        let down = ((Health.shared.snapshot()["summary"] as? [String: Int])?["down"] ?? 0) > 0
+        let tint: NSColor? = AppState.shared.dialog != nil ? .systemRed : down ? .systemOrange : nil
+        var image = NSImage(systemSymbolName: "key.viewfinder", accessibilityDescription: "Nodlock")
+        if let tint = tint { image = image?.withSymbolConfiguration(.init(paletteColors: [tint])) }
+        image?.isTemplate = tint == nil
+        button.image = image
     }
 
     // Rebuild the menu on each open so status/VPN/permissions are live.
