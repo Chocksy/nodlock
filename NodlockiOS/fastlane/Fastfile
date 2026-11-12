@@ -82,6 +82,15 @@ platform :ios do
     )
   end
 
+  # Lets xcodebuild create or refresh certs and profiles (and cloud-sign the
+  # export) with the same API key, so no Distribution cert has to be on this Mac.
+  def signing_xcargs
+    "-allowProvisioningUpdates " \
+      "-authenticationKeyPath #{File.expand_path(ENV['ASC_KEY_PATH'])} " \
+      "-authenticationKeyID #{ENV['ASC_KEY_ID']} " \
+      "-authenticationKeyIssuerID #{ENV['ASC_ISSUER_ID']}"
+  end
+
   desc "Upload App Store metadata, review notes and screenshots. No binary."
   desc "Run `fastlane precheck_local` first. Requires ASC_* env vars."
   lane :metadata do
@@ -110,7 +119,8 @@ platform :ios do
       project: APP_PROJECT,
       export_method: "app-store",
       include_bitcode: false,
-      clean: true
+      clean: true,
+      xcargs: signing_xcargs
     )
 
     pilot(
@@ -131,7 +141,8 @@ platform :ios do
       project: APP_PROJECT,
       export_method: "app-store",
       include_bitcode: false,
-      clean: true
+      clean: true,
+      xcargs: signing_xcargs
     )
 
     deliver(

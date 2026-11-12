@@ -22,3 +22,5 @@ REGIONAL DIFFERENCES: none; identical in all regions. REGULATED INDUSTRY: not ap
 PERMISSIONS USED: notifications (prompt alerts), camera (QR pairing scan), Face ID (gate before typing a password). The demo requires none of these to complete.
 
 MAC ACTIONS: an optional card of buttons that appears only when the user's own Mac companion publishes named actions in its status response. Tapping one sends the action id to the user's Mac over the same HTTPS channel. The demo exposes none, so the card is not visible in demo mode.
+
+STATUS TAB (new in 1.2): a read-only overview of the user's own apps and servers, which their Mac companion collects and serves. In the demo it shows sample apps (Shop, Blog, Infra), two sample servers and one sample warning, so tap the "Status" tab at the bottom after step 3 to see it.

@@ -1,5 +1,5 @@
-Unlock a locked Mac. When your Mac's screen is locked, Nodlock now says so, and the Unlock button types your Mac login password at the lock screen. After that, the security prompt is a tap away, as before.
+New Status tab. See at a glance whether your apps and servers need you.
 
-Also new: the status chip shows "mac locked", and taps on the screenshot are held back until the Mac is unlocked.
+Your Mac collects the status and the phone shows it: problems first, with how long each has been going on, then a row per app and a line per server. A warning gets a card with what happened and what to do, plus buttons to open the dashboard or ask for help. Pull down to refresh.
 
-Mac actions. When your Mac companion exposes quick actions, they now show up as buttons under the prompt card. Tap one, confirm, and the Mac runs it.
+The Unlock tab works the same as before.
