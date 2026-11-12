@@ -183,7 +183,7 @@ private let healthSession: URLSession = {
 }()
 
 // Blocking request with a hard deadline. Returns (status, body, error).
-private func fetch(_ req: URLRequest, deadline: Double) -> (Int, Data?, String?) {
+func fetch(_ req: URLRequest, deadline: Double) -> (Int, Data?, String?) {
     var out: (Int, Data?, String?) = (0, nil, "timeout")
     let sem = DispatchSemaphore(value: 0)
     let task = healthSession.dataTask(with: req) { data, resp, err in

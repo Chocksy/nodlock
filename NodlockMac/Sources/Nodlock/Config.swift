@@ -100,8 +100,8 @@ final class Config {
     }
 
     // Parse KEY=VALUE lines, `export ` prefix allowed, strip surrounding quotes.
-    private static func readEnvFile() -> [String: String] {
-        guard let text = try? String(contentsOfFile: envPath, encoding: .utf8) else { return [:] }
+    static func readEnvFile(_ path: String = envPath) -> [String: String] {
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [:] }
         var out: [String: String] = [:]
         for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
             var line = rawLine.trimmingCharacters(in: .whitespaces)

@@ -103,6 +103,20 @@ final class DemoClient: PanelClient {
     // The fake Mac publishes no actions, so there is nothing to run.
     func runAction(id: String) async throws {}
 
+    func ops() async throws -> OpsSnapshot {
+        let started = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-20 * 60))
+        return OpsSnapshot(
+            overall: "warning",
+            headline: "One thing needs a look today.",
+            items: [OpsItem(id: "demo", severity: "warning", title: "Web server: low free memory",
+                            summary: "The server has only 8% memory free.",
+                            action: "Close old preview deployments.", app: "Infra", started_at: started)],
+            apps: [OpsAppRow(name: "Shop", status: "ok", detail: "all 3 up"),
+                   OpsAppRow(name: "Blog", status: "ok", detail: "up"),
+                   OpsAppRow(name: "Infra", status: "warning", detail: "all 2 up")],
+            servers: ["Web server  RAM 8% free · disk 45%", "Database  RAM 40% free · conn 30%"])
+    }
+
     // MARK: - The mock screenshot
 
     // Drawn once at runtime and cached, so nothing has to ship in the bundle.

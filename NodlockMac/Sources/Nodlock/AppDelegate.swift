@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Start subsystems.
         startWatcher()
         Health.shared.start()
+        OpsStatus.shared.start()
         server = HTTPServer(host: cfg.bind, port: cfg.port)
         do {
             try server.start()
@@ -36,6 +37,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Reflect prompt and health state in the menu bar icon.
         iconTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.refreshIcon()
+            OpsModel.shared.refresh()
+            StatusWidgetWindow.shared.sync()
         }
         RunLoop.main.add(iconTimer!, forMode: .common)
 
@@ -56,9 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshIcon() {
         guard let button = statusItem.button else { return }
-        // Red = a prompt waits, orange = a health watch is down, else the plain template glyph.
-        let down = ((Health.shared.snapshot()["summary"] as? [String: Int])?["down"] ?? 0) > 0
-        let tint: NSColor? = AppState.shared.dialog != nil ? .systemRed : down ? .systemOrange : nil
+        // Red = a prompt waits or a 911, orange = a warning (a down Mac watch is one), else the template glyph.
+        let overall = OpsModel.shared.snap.overall
+        let tint: NSColor? = AppState.shared.dialog != nil || overall == "911" ? .systemRed
+            : overall == "warning" ? .systemOrange : nil
         var image = NSImage(systemSymbolName: "key.viewfinder", accessibilityDescription: "Nodlock")
         if let tint = tint { image = image?.withSymbolConfiguration(.init(paletteColors: [tint])) }
         image?.isTemplate = tint == nil
@@ -86,6 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         statusItem.isEnabled = false
         menu.addItem(statusItem)
+        addOpsItems(to: menu)
         menu.addItem(healthItem())
 
         // Network: works like the Wi-Fi menu. Check = active, click = switch.
@@ -116,6 +121,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        let widget = NSMenuItem(title: "Desktop widget", action: #selector(toggleWidget), keyEquivalent: "")
+        widget.target = self
+        widget.state = StatusWidgetWindow.enabled ? .on : .off
+        menu.addItem(widget)
+        if StatusWidgetWindow.enabled {
+            let slider = NSSlider(value: OpsModel.shared.scale, minValue: 0.7, maxValue: 1.6,
+                                  target: self, action: #selector(scaleWidget(_:)))
+            let label = NSTextField(labelWithString: "Size")
+            label.textColor = .secondaryLabelColor
+            label.frame = NSRect(x: 20, y: 4, width: 40, height: 16)
+            slider.frame = NSRect(x: 58, y: 2, width: 150, height: 20)
+            let box = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+            box.addSubview(label)
+            box.addSubview(slider)
+            let si = NSMenuItem()
+            si.view = box
+            menu.addItem(si)
+        }
         for (t, sel) in [("Open panel", #selector(openPanel)), ("Pair phone…", #selector(showPairingQR)),
                          ("Setup…", #selector(openOnboarding))] {
             let mi = NSMenuItem(title: t, action: sel, keyEquivalent: "")
@@ -148,6 +171,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mi.target = self
         mi.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: NSColor.systemOrange])
         return mi
+    }
+
+    // ---------- ops status ----------
+
+    // Problems first (one line each, click opens the link), then apps, then servers.
+    private func addOpsItems(to menu: NSMenu) {
+        let snap = OpsModel.shared.snap
+        let ops = OpsStatus.shared
+        guard ops.isConfigured || !snap.items.isEmpty else { return }
+        let now = Date()
+        menu.addItem(.separator())
+        if snap.items.isEmpty {
+            menu.addItem(disabledTitled("All good", secondary: snap.headline, dot: .systemGreen))
+        }
+        for i in snap.items {
+            let mi = NSMenuItem(title: i.title, action: #selector(openOpsLink(_:)), keyEquivalent: "")
+            mi.target = self
+            mi.representedObject = i.link
+            mi.attributedTitle = titled(i.title, secondary: ageText(i.started_at, now: now), dot: severityColor(i.severity))
+            if i.link == nil { mi.action = #selector(copyWatch(_:)); mi.representedObject = i.title }
+            mi.toolTip = [i.summary, i.action].filter { !$0.isEmpty }.joined(separator: "\n")
+            menu.addItem(mi)
+        }
+        if !snap.apps.isEmpty {
+            menu.addItem(.sectionHeader(title: "Apps"))
+            for a in snap.apps {
+                menu.addItem(copyRow(a.name, secondary: a.detail, dot: severityColor(a.status)))
+            }
+        }
+        if !snap.servers.isEmpty {
+            menu.addItem(.sectionHeader(title: "Servers"))
+            for line in snap.servers {
+                let parts = line.components(separatedBy: "  ")
+                menu.addItem(copyRow(parts[0], secondary: parts.dropFirst().joined(separator: "  ")))
+            }
+        }
+        menu.addItem(.separator())
+    }
+
+    // Enabled (full contrast); a click copies the line.
+    private func copyRow(_ title: String, secondary: String, dot: NSColor? = nil) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: #selector(copyWatch(_:)), keyEquivalent: "")
+        mi.target = self
+        mi.attributedTitle = titled(title, secondary: secondary, dot: dot)
+        mi.representedObject = "\(title): \(secondary)"
+        return mi
+    }
+
+    private func disabledTitled(_ title: String, secondary: String, dot: NSColor? = nil) -> NSMenuItem {
+        let mi = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        mi.attributedTitle = titled(title, secondary: secondary, dot: dot)
+        mi.isEnabled = false
+        return mi
+    }
+
+    @objc private func openOpsLink(_ sender: NSMenuItem) {
+        if let s = sender.representedObject as? String, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+    }
+
+    @objc private func toggleWidget() {
+        StatusWidgetWindow.enabled.toggle()
+        StatusWidgetWindow.shared.sync()
+    }
+
+    @objc private func scaleWidget(_ sender: NSSlider) {
+        OpsModel.shared.scale = (sender.doubleValue * 20).rounded() / 20
+        DispatchQueue.main.async { StatusWidgetWindow.shared.refit() }
     }
 
     // ---------- health ----------

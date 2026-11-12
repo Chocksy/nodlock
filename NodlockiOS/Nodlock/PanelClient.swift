@@ -16,4 +16,5 @@ protocol PanelClient {
     func unregisterPush(deviceTokenHex: String) async throws
     func clearLogins() async throws
     func runAction(id: String) async throws
+    func ops() async throws -> OpsSnapshot
 }

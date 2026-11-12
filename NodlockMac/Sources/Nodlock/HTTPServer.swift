@@ -144,6 +144,11 @@ final class HTTPServer {
             return httpResponse(status: "200 OK", contentType: "application/json", body: json)
         }
 
+        if path == "/ops" {
+            // Ops feed + local watches, ranked. The phone reads it here; the feed token stays on the Mac.
+            return httpResponse(status: "200 OK", contentType: "application/json", body: OpsStatus.shared.json())
+        }
+
         if path.hasPrefix("/shot.png") {
             if let d = d, let png = capturePNG(windowID: d.id) {
                 return httpResponse(status: "200 OK", contentType: "image/png", body: png)

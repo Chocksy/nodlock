@@ -10,7 +10,15 @@ struct RootView: View {
             Theme.background
             if model.isPaired {
                 BiometricGate {
-                    UnlockView()
+                    TabView {
+                        UnlockView()
+                            .background(Theme.background)
+                            .tabItem { Label("Unlock", systemImage: "key.viewfinder") }
+                        StatusView()
+                            .background(Theme.background)
+                            .tabItem { Label("Status", systemImage: "waveform.path.ecg") }
+                    }
+                    .tint(Theme.accent)
                 }
             } else {
                 PairingView()

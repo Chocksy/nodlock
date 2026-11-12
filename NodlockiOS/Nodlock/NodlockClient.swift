@@ -101,6 +101,15 @@ struct NodlockClient: PanelClient {
         return try JSONDecoder().decode(NodlockStatus.self, from: data)
     }
 
+    // Ops status the Mac merged from its feed and local watches (GET /ops).
+    func ops() async throws -> OpsSnapshot {
+        var req = URLRequest(url: try url("/ops"))
+        applyAccessHeaders(&req)
+        let (data, resp) = try await session.data(for: req)
+        try check(resp)
+        return try JSONDecoder().decode(OpsSnapshot.self, from: data)
+    }
+
     // Returns raw PNG bytes for the current dialog window, or nil when 404 (no dialog).
     func screenshot() async throws -> Data? {
         var req = URLRequest(url: try url("/shot.png", query: ["t": String(Int(Date().timeIntervalSince1970 * 1000))]))

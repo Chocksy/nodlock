@@ -58,3 +58,13 @@ The file is one object with an optional `interval` (seconds, default 60) and a `
 
 `name` must be unique. Always write a `hint`: it is the first thing the next agent reads.
 A `fix` that starts a background process must redirect its output (`>/dev/null 2>&1 &`); prefer `launchctl kickstart` or `tmux`.
+
+## Ops status feed
+
+Put `OPS_STATUS_URL` and `OPS_STATUS_TOKEN` in `~/.config/op-guard/ops-status.env` (0600). Nodlock polls the feed every 60 s and merges it with the watches above into one ranked list: 911 > warning > feed unreachable (grey, after 3 failed polls) > spike. A down watch counts as a warning, a failing one as a spike.
+
+- Menu bar: icon red on a prompt or a 911, orange on a warning. Problems first (click opens Grafana), then apps, then servers.
+- Desktop widget: toggle and size in the menu. Small "All good" card, or a hero card for the worst problem.
+- macOS notification once per alert id and severity (warning and 911 only).
+- `GET /ops` (panel token) serves the merged list to the iOS Status tab. The feed token never leaves the Mac.
+- Test fixture: `OPS_STATUS_URL=file:///path/feed.json ~/Applications/Nodlock.app/Contents/MacOS/Nodlock`.
